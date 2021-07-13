@@ -53,7 +53,7 @@ void setup() {
   // pinMode(13, INPUT_PULLUP);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, low);
+  digitalWrite(LED_BUILTIN, LOW);
 
 }
 
