@@ -5,54 +5,41 @@
 #include "MIDI.h"
 #include "TM1637.h"
 
-// struct MySettings : public midi::DefaultSettings {
-//   static const long BaudRate = 57600;
-// };
+const int PUSHED = LOW;
+const int RELEASED = HIGH;
+const int NB_PUSH = 8;
+const long BAUD_RATE = 57600;
+const int LCD_CLK = 12;
+const int LCD_DIO = 11;
 
 struct HairlessMidiSettings : public midi::DefaultSettings
 {
    static const bool UseRunningStatus = false;
-   static const long BaudRate = 57600;
+   static const long BaudRate = BAUD_RATE;
 };
 
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
-// MIDI_CREATE_CUSTOM_INSTANCE();
 
-TM1637 tm(12, 11);
+TM1637 tm(LCD_CLK, LCD_DIO);
 
-bool sensor1IsActive = false;
-bool sensor7IsActive = false;
-bool sensor8IsActive = false;
+int midiChannel = 2;
+
+int pushPin[NB_PUSH] = {3, 4, 5, 6, 7, 8, 9, 10};
+int pushNote[NB_PUSH] = {60, 62, 63, 64, 65, 67, 71, 72};
+int pushVelocity[NB_PUSH] = {127, 127, 127, 127, 127, 127, 127, 127};
+int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 
 void setup() {
-  //start serial connection
-  Serial.begin(57600);
+
+  Serial.begin(BAUD_RATE);
 
   tm.begin();
 
   tm.display("PLAY");
 
-  // MIDI.begin(MIDI_CHANNEL_OMNI);
-
-  //configure pin 2 as an input and enable the internal pull-up resistor
-  // pinMode(1, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
-  pinMode(4, INPUT_PULLUP);
-  pinMode(5, INPUT_PULLUP);
-  pinMode(6, INPUT_PULLUP);
-  pinMode(7, INPUT_PULLUP);
-  pinMode(8, INPUT_PULLUP);
-  pinMode(9, INPUT_PULLUP);
-  pinMode(10, INPUT_PULLUP);
-  // pinMode(5, INPUT_PULLUP);
-  // pinMode(6, INPUT_PULLUP);
-  // pinMode(7, INPUT_PULLUP);
-  // pinMode(8, INPUT_PULLUP);
-  // pinMode(9, INPUT_PULLUP);
-  // pinMode(10, INPUT_PULLUP);
-  // pinMode(11, INPUT_PULLUP);
-  // pinMode(12, INPUT_PULLUP);
-  // pinMode(13, INPUT_PULLUP);
+  for (int i; i < NB_PUSH; i++) {
+    pinMode(pushPin[i], INPUT_PULLUP);
+  }
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
@@ -61,87 +48,21 @@ void setup() {
 
 void loop() {
 
-  //read the pushbutton value into a variable
-  int sensorVal1 = digitalRead(3);
-  int sensorVal2 = digitalRead(4);
-  int sensorVal3 = digitalRead(5);
-  int sensorVal4 = digitalRead(6);
-  int sensorVal5 = digitalRead(7);
-  int sensorVal6 = digitalRead(8);
-  int sensorVal7 = digitalRead(9);
-  int sensorVal8 = digitalRead(10);
+  for (int i = 0; i < NB_PUSH; i++) {
 
-  if (sensorVal1 == LOW && !sensor1IsActive) {
-      MIDI.sendNoteOn(60,127,2);
-      sensor1IsActive = true;
-      digitalWrite(LED_BUILTIN, HIGH);
-  }
-  if (sensorVal1 == HIGH && sensor1IsActive) {
-      sensor1IsActive = false;
-      MIDI.sendNoteOff(60,127,2);
-      digitalWrite(LED_BUILTIN, LOW);
-  }
+    int sensorVal = digitalRead(pushPin[i]);
 
-  if (sensorVal2 == LOW) {
-      MIDI.sendNoteOn(62,127,2);
-  }
-  if (sensorVal2 == HIGH) {
-      // MIDI.sendNoteOff(61,127,2);
-  }
-
-  if (sensorVal3 == LOW) {
-      MIDI.sendNoteOn(64,127,2);
-  }
-  if (sensorVal3 == HIGH) {
-      // MIDI.sendNoteOff(62,127,2);
-  }
-
-  if (sensorVal4 == LOW) {
-      MIDI.sendNoteOn(65,127,2);
-  }
-  if (sensorVal4 == HIGH) {
-      // MIDI.sendNoteOff(63,127,2);
-  }
-
-  if (sensorVal5 == LOW) {
-      MIDI.sendNoteOn(67,127,2);
-      Serial.println(sensorVal5);
-  }
-  if (sensorVal5 == HIGH) {
-      // MIDI.sendNoteOff(63,127,2);
-  }
-
-  if (sensorVal6 == LOW) {
-      MIDI.sendNoteOn(69,127,2);
-      Serial.println(sensorVal6);
-  }
-  if (sensorVal6 == HIGH) {
-      // MIDI.sendNoteOff(63,127,2);
-  }
-
-  if (sensorVal7 == LOW && !sensor7IsActive) {
-      MIDI.sendNoteOn(71,127,2);
-      sensor7IsActive = true;
-      digitalWrite(LED_BUILTIN, HIGH);
-  }
-  if (sensorVal7 == HIGH && sensor7IsActive) {
-      sensor7IsActive = false;
-      MIDI.sendNoteOff(71,127,2);
-      digitalWrite(LED_BUILTIN, LOW);
-  }
-
-  if (sensorVal8 == LOW && !sensor8IsActive) {
-      MIDI.sendNoteOn(72,127,2);
-      sensor8IsActive = true;
-      digitalWrite(LED_BUILTIN, HIGH);
-  }
-  if (sensorVal8 == HIGH && sensor8IsActive) {
-      sensor8IsActive = false;
-      MIDI.sendNoteOff(72,127,2);
-      digitalWrite(LED_BUILTIN, LOW);
+    if (sensorVal == PUSHED && isPushed[i] == RELEASED) {
+        MIDI.sendNoteOn(pushNote[i], pushVelocity[i], midiChannel);
+        isPushed[i] = PUSHED;
+        digitalWrite(LED_BUILTIN, HIGH);
+    }
+    if (sensorVal == RELEASED && isPushed[i] == PUSHED) {
+        isPushed[i] = RELEASED;
+        MIDI.sendNoteOff(pushNote[i], pushVelocity[i], midiChannel);
+        digitalWrite(LED_BUILTIN, LOW);
+    }
   }
 
   delay(100);
-
-  // digitalWrite(LED_BUILTIN, LOW);
 }
