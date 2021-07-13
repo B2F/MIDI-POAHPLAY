@@ -36,11 +36,17 @@ void setup() {
 
   MIDI.begin(MIDI_CHANNEL_OMNI);
 
-  Serial.println("here");
-
   for (int pin : pushPin) {
     pinMode(pushPin[pin], INPUT_PULLUP);
-    Serial.println(pushPin[pin]);
+    if (pin == 0 && pushPin[pin] == 3) {
+      // Serial.println("3");
+    }
+    if (pin == 1 && pushPin[pin] == 4) {
+      // Serial.println("4");
+    }
+    if (pin == 7 && pushPin[pin] == 10) {
+      // Serial.println("10");
+    }
   }
 
   tm.begin();
@@ -55,18 +61,17 @@ void loop() {
 
   for (int pin : pushPin) {
 
-    int status = digitalRead(pin);
+    int status = digitalRead(pushPin[pin]);
 
     if (status == LOW && status != pushStatus[pin]) {
       pushStatus[pin] = LOW;
-      MIDI.sendNoteOn(pushNote[pin], pushVelocity[pin], MIDI_CHANNEL);
+      MIDI.sendNoteOn(62, pushVelocity[pin], MIDI_CHANNEL);
       digitalWrite(LED_BUILTIN, HIGH);
     }
     else if (status == HIGH && status != pushStatus[pin]) {
       pushStatus[pin] = HIGH;
-      MIDI.sendNoteOff(pushNote[pin], pushVelocity[pin], MIDI_CHANNEL);
+      MIDI.sendNoteOff(62, pushVelocity[pin], MIDI_CHANNEL);
       digitalWrite(LED_BUILTIN, LOW);
-      Serial.println(status);
     }
   }
 
