@@ -21,6 +21,8 @@ MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 TM1637 tm(12, 11);
 
 bool sensor1IsActive = false;
+bool sensor7IsActive = false;
+bool sensor8IsActive = false;
 
 void setup() {
   //start serial connection
@@ -72,13 +74,11 @@ void loop() {
   if (sensorVal1 == LOW && !sensor1IsActive) {
       MIDI.sendNoteOn(60,127,2);
       sensor1IsActive = true;
-      Serial.print(0);
       digitalWrite(LED_BUILTIN, HIGH);
   }
   if (sensorVal1 == HIGH && sensor1IsActive) {
       sensor1IsActive = false;
       MIDI.sendNoteOff(60,127,2);
-      Serial.print(1);
       digitalWrite(LED_BUILTIN, LOW);
   }
 
@@ -119,20 +119,26 @@ void loop() {
       // MIDI.sendNoteOff(63,127,2);
   }
 
-  if (sensorVal7 == LOW) {
+  if (sensorVal7 == LOW && !sensor7IsActive) {
       MIDI.sendNoteOn(71,127,2);
-      Serial.println(sensorVal7);
+      sensor7IsActive = true;
+      digitalWrite(LED_BUILTIN, HIGH);
   }
-  if (sensorVal7 == HIGH) {
-      // MIDI.sendNoteOff(63,127,2);
+  if (sensorVal7 == HIGH && sensor7IsActive) {
+      sensor7IsActive = false;
+      MIDI.sendNoteOff(71,127,2);
+      digitalWrite(LED_BUILTIN, LOW);
   }
 
-  if (sensorVal8 == LOW) {
+  if (sensorVal8 == LOW && !sensor8IsActive) {
       MIDI.sendNoteOn(72,127,2);
-      Serial.println(sensorVal8);
+      sensor8IsActive = true;
+      digitalWrite(LED_BUILTIN, HIGH);
   }
-  if (sensorVal8 == HIGH) {
-      // MIDI.sendNoteOff(63,127,2);
+  if (sensorVal8 == HIGH && sensor8IsActive) {
+      sensor8IsActive = false;
+      MIDI.sendNoteOff(72,127,2);
+      digitalWrite(LED_BUILTIN, LOW);
   }
 
   delay(100);
