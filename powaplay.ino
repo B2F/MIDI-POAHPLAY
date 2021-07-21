@@ -3,9 +3,12 @@
  */
 
 #include "MIDI.h"
-#include "TM1637.h"
-#include <RotaryEncoder.h>
+#include "SevenSegmentTM1637.h"
+#include "SevenSegmentExtended.h"
+#include "SevenSegmentFun.h"
+#include <Encoder.h>
 #include <light_CD74HC4067.h>
+#include <HCSR04.h>
 
 const long BAUD_RATE = 57600;
 
@@ -13,20 +16,19 @@ const long BAUD_RATE = 57600;
 
 const int NB_ENCODERS = 2;
 
-const int P1CLK = 4;
-const int P1DT = 3;
+const int P1CLK = 2;
+const int P1DT = 4;
 const int P1SW = 14;
-const int P2CLK = 6;
+const int P2CLK = 3;
 const int P2DT = 5;
 const int P2SW = 15;
 
-// RotaryEncoder P1(P1CLK, P1DT, RotaryEncoder::LatchMode::TWO03);
-// RotaryEncoder P2(P2CLK, P2DT, RotaryEncoder::LatchMode::TWO03);
+Encoder P1(P1CLK, P1DT);
+Encoder P2(P2CLK, P2DT);
 
-// RotaryEncoder encoder[NB_ENCODERS] = {P1, P2};
-// int encoderSwitches[NB_ENCODERS] = {P1SW, P2SW};
-int encoderPos[NB_ENCODERS] = {1, 1};
-int encoderState[NB_ENCODERS] = {0, 0};
+Encoder encoder[NB_ENCODERS] = {P1, P2};
+int encoderPos[NB_ENCODERS] = {0, 0};
+int encoderState[NB_ENCODERS] = {1, 1};
 
 // Multiplexer
 
@@ -45,14 +47,125 @@ MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
 int midiChannel = 2;
 int globalVelocity = 127;
-int globalStartNote = 60;
+int globalNote = 60;
+
+String midiNote[128] = {"","","","","","","","","","","","","","","","","","","","",
+  "A0",
+  "A#0",
+  "B0",
+  "C1",
+  "C#1",
+  "D1",
+  "D#1",
+  "E1",
+  "F1",
+  "F#1",
+  "G1",
+  "G#1",
+  "A1",
+  "A#1",
+  "B1",
+  "C2",
+  "C#2",
+  "D2"
+  "D#2",
+  "E2",
+  "F2",
+  "F#2",
+  "G2",
+  "G#2",
+  "A2",
+  "A#2",
+  "B2",
+  "C3",
+  "C#3",
+  "D3"
+  "D#3",
+  "E3",
+  "F3",
+  "F#3",
+  "G3",
+  "G#3",
+  "A3",
+  "A#3",
+  "B3",
+  "C4",
+  "C#4",
+  "D4"
+  "D#4",
+  "E4",
+  "F4",
+  "F#4",
+  "G4",
+  "G#4",
+  "A4",
+  "A#4",
+  "B4",
+  "C5",
+  "C#5",
+  "D5"
+  "D#5",
+  "E5",
+  "F5",
+  "F#5",
+  "G5",
+  "G#5",
+  "A5",
+  "A#5",
+  "B5",
+  "C6",
+  "C#6",
+  "D6"
+  "D#6",
+  "E6",
+  "F6",
+  "F#6",
+  "G6",
+  "G#6",
+  "A6",
+  "A#6",
+  "B6",
+  "C7",
+  "C#7",
+  "D7"
+  "D#7",
+  "E7",
+  "F7",
+  "F#7",
+  "G7",
+  "G#7",
+  "A7",
+  "A#7",
+  "B7",
+  "C8",
+  "C#8",
+  "D8"
+  "D#8",
+  "E8",
+  "F8",
+  "F#8",
+  "G8",
+  "G#8",
+  "A8",
+  "A#8",
+  "B8",
+  "C9",
+  "C#9",
+  "D9"
+  "D#9",
+  "E9",
+  "F9",
+  "F#9",
+  "G9",
+  "G#9",
+};
 
 // LCD
 
 const int LCD_CLK = 12;
 const int LCD_DIO = 11;
 
-TM1637 tm(LCD_CLK, LCD_DIO);
+SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Push buttons:
 
@@ -62,13 +175,20 @@ const int NB_PUSH = 8;
 
 int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 int pushNote[NB_PUSH] = {60, 62, 63, 64, 65, 67, 71, 72};
-int pushVelocity[NB_PUSH] = {127, 127, 127, 127, 127, 127, 127, 127};
+int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
+bool selectedPushPin[NB_PUSH] = {false, false, false, false, false, false, false, false};
 
 // Faders:
 
 const int F1 = A6;
 const int F2 = A7;
+
+int faderPos[2] = {0, 0};
+
+const int MAX_FADER_VALUE = 970;
+const int MIN_FADER_VALUE = 50;
+const int FADER_THRESHOLD = 30;
 
 // Leds:
 
@@ -77,14 +197,25 @@ const int L2 = 9;
 const int L3 = 8;
 const int L4 = 7;
 
+// Ultrasonic
+
+const int triggerPin = 13;
+const int echoPin = 6;
+UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
+
+// Magnet
+
+const int MAGNET = A5;
+
 void setup() {
 
   Serial.begin(BAUD_RATE);
 
-  tm.begin();
-
-  // tm.display("PLAY");
-  tm.clearScreen();
+  display.begin();
+  display.setBacklight(50);
+  byte repeats = 2;
+  display.scrollingText("P0AH PLAY", repeats);
+  delay(1000);   
 
   pinMode(P1CLK, INPUT);
   pinMode(P1DT, INPUT);
@@ -97,33 +228,48 @@ void setup() {
   pinMode(L3, OUTPUT);
   pinMode(L4, OUTPUT);
 
+  // Magnet:
+  pinMode(MAGNET, OUTPUT);
+
   // mux sig:
   pinMode(A0, INPUT_PULLUP);
 
+  // Internal led:
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
 
-  // for (int e = 0; e < NB_ENCODERS; e++) {
-  //   encoder[e].tick();
-  //   int position = encoder[e].getPosition();
-  //   if (0 != encoderPos[e] && encoderPos[e] != position) {
-  //     encoderPos[e] = position;
-  //     String positionString = String(position);
-  //     tm.display(positionString);
-  //   }
-  //   Serial.println(encoderPos[e]);
+  int faderValue = analogRead(F1);
+  if (faderValue > faderPos[0] + FADER_THRESHOLD || faderValue < faderPos[0] - FADER_THRESHOLD) {
+    globalVelocity = getMidiValueFromFader(faderValue);
+    display.clear();
+    display.print(globalVelocity);
+    faderPos[0] = faderValue;
+  }
 
-  //   int state = digitalRead(encoderSwitches[e]);
-  //   if (state != encoderState[e]) {
-  //       encoderState[e] = state;
-  //       Serial.println("Changed");
-  //       digitalWrite(LED_BUILTIN, LOW);
-  //       tm.clearScreen();
-  //   }
+  // faderValue = getMidiValueFromFader(analogRead(F2));
+  // if (faderValue != faderPos[1]){
+  //   tm.display(String(faderValue));
+  //   faderPos[1] = faderValue;
   // }
+
+  int position = P1.read();
+  String positionString = String(position);
+  if (position != 0 && encoderPos[0] != position) {
+    encoderPos[0] = position;
+    // tm.clearScreen();
+    // tm.display(String(position));
+  }
+
+  position = P2.read();
+  positionString = String(position);
+  if (position != 0 && encoderPos[1] != position) {
+    encoderPos[1] = position;
+    // tm.clearScreen();
+    // tm.display(String(position));
+  }
 
   for (int p = 0; p < NB_PUSH; p++) {
 
@@ -140,13 +286,27 @@ void loop() {
         MIDI.sendNoteOff(pushNote[p], pushVelocity[p], midiChannel);
         digitalWrite(LED_BUILTIN, LOW);
     }
-    delay(5);
   }
 
-  digitalWrite(L1, HIGH);
-  // digitalWrite(L2, HIGH);
-  digitalWrite(L3, HIGH);
-  // digitalWrite(L4, HIGH);
+  // double distance = distanceSensor.measureDistanceCm();
+  // Serial.println(distance);
 
-  delay(10);
+  digitalWrite(L1, HIGH);
+  digitalWrite(L2, HIGH);
+  digitalWrite(L3, HIGH);
+  digitalWrite(L4, HIGH);
+}
+
+long int getMidiValueFromFader(long int faderValue) {
+  if (faderValue > MAX_FADER_VALUE) {
+    faderValue = 1024;
+  }
+  if (faderValue < MIN_FADER_VALUE) {
+    faderValue = 0;
+  }
+  return 127 - (faderValue * 127 / 1024);
+}
+
+String getNoteFromFaderValue(int faderValue) {
+  return midiNote[getMidiValueFromFader(faderValue)];
 }
