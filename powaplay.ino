@@ -231,12 +231,15 @@ void setup() {
 
   Serial.begin(BAUD_RATE);
 
+  // LCD:
   display.begin();
-  // display.setBacklight(50);
-  // byte repeats = 1;
-  // display.scrollingText("P0AH PLAY", repeats);
-  // delay(1000);   
+  display.print("P0AH");
+  delay(500);
+  display.blink();
+  display.print("P0AH PLAY");
+  display.snake(3, 70);
 
+  // Encoders:
   pinMode(P1CLK, INPUT);
   pinMode(P1DT, INPUT);
   pinMode(P2CLK, INPUT);
