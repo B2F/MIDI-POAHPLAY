@@ -10,6 +10,7 @@
 #include <light_CD74HC4067.h>
 #include <HCSR04.h>
 
+byte serialData;
 const long BAUD_RATE = 57600;
 
 // Encoders:
@@ -216,6 +217,16 @@ const int SW2 = 1;
 const int SW3 = 10;
 const int SW4 = 13;
 
+// MIDI Clock
+
+#define MIDI_CLOCK 0xF8
+#define MIDI_START 0xFA
+#define MIDI_STOP 0xFC
+#define MIDI_CONTINUE 0xFB
+int play_flag = 0;
+int midiCLockTick = 0;
+long int quarterNoteTime = 0;
+
 void setup() {
 
   Serial.begin(BAUD_RATE);
@@ -246,9 +257,25 @@ void setup() {
   // Internal led:
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
+
+  // MIDI Clock:
+  quarterNoteTime = millis();
 }
 
 void loop() {
+
+  serialData = Serial.read();
+  if (serialData == MIDI_START || serialData == MIDI_CONTINUE) {
+    play_flag = 1;
+    display.clear();
+    display.print("PLAY");
+  }
+  else if (serialData == MIDI_STOP) {
+    play_flag = 0;
+  }
+  else if ((serialData == MIDI_CLOCK) && (play_flag == 1)) {
+    Sync();
+  }
 
   mux.channel(SW1);
   bool midiCCIsActive = digitalRead(MUXSIG);
@@ -418,4 +445,16 @@ int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosi
 
 String getNoteFromFaderValue(int faderValue) {
   return midiNote[getMidiValueFromFader(faderValue)];
+}
+
+void Sync() {
+  midiCLockTick++;
+  if (midiCLockTick == 24) {
+    quarterNoteTime = millis() - quarterNoteTime;
+    long int bpm = 60000/quarterNoteTime;
+    display.clear();
+    display.print(bpm);
+    midiCLockTick = 0;
+    quarterNoteTime = millis();
+  }
 }
