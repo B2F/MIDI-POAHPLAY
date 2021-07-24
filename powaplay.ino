@@ -179,7 +179,7 @@ const int RELEASED = HIGH;
 const int NB_PUSH = 8;
 
 int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
-int pushNote[NB_PUSH] = {60, 62, 63, 64, 65, 67, 71, 72};
+int pushNote[NB_PUSH] = {60, 61, 62, 63, 64, 65, 66, 67};
 int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 int selectedPushPin = -1;
@@ -458,19 +458,18 @@ char* getNoteFromMidiValue(int midiValue) {
 
 void MidiSync() {
   midiCLockTick++;
-  // if (noteRepeatIsActive) {
-  if (true) {
+  if (noteRepeatIsActive) {
     float ticksPerBeat = ticksPerNote * repeatSpeedDividend / repeatSpeedDivisor;
     if (midiCLockTick == ticksPerBeat) {
       for (int pin = 0; pin < NB_PUSH; pin++) {
-        if (isPushed[pin]) {
+        if (isPushed[pin] == PUSHED) {
           playPush(pin, 1);
         }
       }
     }
     if (midiCLockTick == ticksPerBeat+1) {
       for (int pin = 0; pin < NB_PUSH; pin++) {
-        if (isPushed[pin]) {
+        if (isPushed[pin] == RELEASED) {
           playPush(pin, 0);
         }
       }
