@@ -50,7 +50,7 @@ MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
 int midiChannel = 2;
 int globalVelocity = 127;
-int globalNote = 60;
+int globalNoteOffset = 60;
 int ticksPerNote = 96;
 int currentQuarter = 1;
 
@@ -232,7 +232,6 @@ bool noteRepeatIsActive = false;
 #define MIDI_START 0xFA
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
-int currentNote = globalNote;
 int currentVelocity = globalVelocity;
 int play_flag = 0;
 int midiCLockTick = 0;
@@ -325,17 +324,16 @@ void loop() {
   if (faderValue > faderPos[1] + FADER_THRESHOLD || faderValue < faderPos[1] - FADER_THRESHOLD) {
     display.clear();
     if (globalPosIsActive) {
-      globalNote = getMidiValueFromFader(faderValue);
-      if (globalNote < 20) {
-        globalNote = 20;
-      }
-      char* note = getNoteFromMidiValue(globalNote);
+      globalNoteOffset = getMidiValueFromFader(faderValue) - 67;
+      if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
+      if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
+      char* note = getNoteFromMidiValue(60+globalNoteOffset);
       display.print(note);
     }
     else if (selectedPushPin != -1) {
       pushNote[selectedPushPin] = getMidiValueFromFader(faderValue);
-      if (pushNote[selectedPushPin] < 21) {
-        pushNote[selectedPushPin] = 21;
+      if (pushNote[selectedPushPin] < 20) {
+        pushNote[selectedPushPin] = 20;
       }
       char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
       display.print(note);
@@ -352,11 +350,11 @@ void loop() {
   if (position != 0 && encoderPos[0] != position) {
      display.clear();
      if (globalPosIsActive) {
-      globalVelocity = getMidiValueFromEncoder(globalVelocity, position, encoderPos[0], 0);
+      globalVelocity = getMidiValueFromEncoder(globalVelocity, position, encoderPos[0]);
       display.print(globalVelocity);
     }
     else if (selectedPushPin != -1) {
-      pushVelocity[selectedPushPin] = getMidiValueFromEncoder(pushVelocity[selectedPushPin], position, encoderPos[0], 0);
+      pushVelocity[selectedPushPin] = getMidiValueFromEncoder(pushVelocity[selectedPushPin], position, encoderPos[0]);
       display.print(pushVelocity[selectedPushPin]);
     }
     encoderPos[0] = position;
@@ -364,17 +362,17 @@ void loop() {
 
   position = P2.read();
   if (position != 0 && encoderPos[1] != position) {
-     display.clear();
-     if (globalPosIsActive) {
-      globalNote = getMidiValueFromEncoder(globalNote, position, encoderPos[1], 21);
-      if (globalNote < 20) {
-        globalNote = 20;
-      }
-      char* note = getNoteFromMidiValue(globalNote);
+    display.clear();
+    if (globalPosIsActive) {
+      globalNoteOffset = getMidiValueFromEncoder(60+globalNoteOffset, position, encoderPos[1]) - 60;
+      if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
+      if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
+      char* note = getNoteFromMidiValue(60+globalNoteOffset);
       display.print(note);
     }
     else if (selectedPushPin != -1) {
-      pushNote[selectedPushPin] = getMidiValueFromEncoder(pushNote[selectedPushPin], position, encoderPos[1], 0);
+      pushNote[selectedPushPin] = getMidiValueFromEncoder(pushNote[selectedPushPin], position, encoderPos[1]);
+      if (pushNote[selectedPushPin] < 20) { pushNote[selectedPushPin] = 20; }
       char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
       display.print(note);
     }
@@ -415,10 +413,10 @@ void writeLeds(int s1, int s2, int s3, int s4) {
 
 void playPush(int pin, bool state) {
   currentVelocity = pushVelocity[pin];
-  currentNote = pushNote[pin];
+  int currentNote = pushNote[pin];
   if (globalPosIsActive) {
     currentVelocity = globalVelocity;
-    currentNote = globalNote;
+    currentNote += globalNoteOffset;
   }
   if (state) {
     MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
@@ -442,7 +440,7 @@ long int getMidiValueFromFader(long int faderValue) {
   return 127 - (faderValue * 127 / 1024);
 }
 
-long int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosition, int minValue) {
+long int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosition) {
   int delta = position - previousPosition;
   int newMidiValue = currentMidiValue + delta;
   if (newMidiValue >= 127) {
