@@ -52,115 +52,115 @@ int midiChannel = 2;
 int globalVelocity = 127;
 int globalNote = 60;
 
-String midiNote[128] = {"","","","","","","","","","","","","","","","","","","","",
-  "A0",
-  "A#0",
-  "B0",
-  "C1",
-  "C#1",
-  "D1",
-  "D#1",
-  "E1",
-  "F1",
-  "F#1",
-  "G1",
-  "G#1",
-  "A1",
-  "A#1",
-  "B1",
-  "C2",
-  "C#2",
-  "D2"
-  "D#2",
-  "E2",
-  "F2",
-  "F#2",
-  "G2",
-  "G#2",
-  "A2",
-  "A#2",
-  "B2",
-  "C3",
-  "C#3",
-  "D3"
-  "D#3",
-  "E3",
-  "F3",
-  "F#3",
-  "G3",
-  "G#3",
-  "A3",
-  "A#3",
-  "B3",
-  "C4",
-  "C#4",
-  "D4"
-  "D#4",
-  "E4",
-  "F4",
-  "F#4",
-  "G4",
-  "G#4",
-  "A4",
-  "A#4",
-  "B4",
-  "C5",
-  "C#5",
-  "D5"
-  "D#5",
-  "E5",
-  "F5",
-  "F#5",
-  "G5",
-  "G#5",
-  "A5",
-  "A#5",
-  "B5",
-  "C6",
-  "C#6",
-  "D6"
-  "D#6",
-  "E6",
-  "F6",
-  "F#6",
-  "G6",
-  "G#6",
-  "A6",
-  "A#6",
-  "B6",
-  "C7",
-  "C#7",
-  "D7"
-  "D#7",
-  "E7",
-  "F7",
-  "F#7",
-  "G7",
-  "G#7",
-  "A7",
-  "A#7",
-  "B7",
-  "C8",
-  "C#8",
-  "D8"
-  "D#8",
-  "E8",
-  "F8",
-  "F#8",
-  "G8",
-  "G#8",
-  "A8",
-  "A#8",
-  "B8",
-  "C9",
-  "C#9",
-  "D9"
-  "D#9",
-  "E9",
-  "F9",
-  "F#9",
-  "G9",
-  "G#9",
+char* midiNote[128] = {"","","","","","","","","","","","","","","","","","","","",
+  " A0",
+  " AH0",
+  " B0",
+  " C1",
+  " CH1",
+  " D1",
+  " DH1",
+  " E1",
+  " F1",
+  " FH1",
+  " G1",
+  " GH1",
+  " A1",
+  " AH1",
+  " B1",
+  " C2",
+  " CH2",
+  " D2"
+  " DH2",
+  " E2",
+  " F2",
+  " FH2",
+  " G2",
+  " GH2",
+  " A2",
+  " AH2",
+  " B2",
+  " C3",
+  " CH3",
+  " D3"
+  " DH3",
+  " E3",
+  " F3",
+  " FH3",
+  " G3",
+  " GH3",
+  " A3",
+  " AH3",
+  " B3",
+  " C4",
+  " CH4",
+  " D4"
+  " DH4",
+  " E4",
+  " F4",
+  " FH4",
+  " G4",
+  " GH4",
+  " A4",
+  " AH4",
+  " B4",
+  " C5",
+  " CH5",
+  " D5"
+  " DH5",
+  " E5",
+  " F5",
+  " FH5",
+  " G5",
+  " GH5",
+  " A5",
+  " AH5",
+  " B5",
+  " C6",
+  " CH6",
+  " D6"
+  " DH6",
+  " E6",
+  " F6",
+  " FH6",
+  " G6",
+  " GH6",
+  " A6",
+  " AH6",
+  " B6",
+  " C7",
+  " CH7",
+  " D7"
+  " DH7",
+  " E7",
+  " F7",
+  " FH7",
+  " G7",
+  " GH7",
+  " A7",
+  " AH7",
+  " B7",
+  " C8",
+  " CH8",
+  " D8"
+  " DH8",
+  " E8",
+  " F8",
+  " FH8",
+  " G8",
+  " GH8",
+  " A8",
+  " AH8",
+  " B8",
+  " C9",
+  " CH9",
+  " D9"
+  " DH9",
+  " E9",
+  " F9",
+  " FH9",
+  " G9",
+  " GH9",
 };
 
 // LCD
@@ -306,33 +306,65 @@ void loop() {
     faderPos[0] = faderValue;
   }
 
-  // faderValue = getMidiValueFromFader(analogRead(F2));
-  // if (faderValue != faderPos[1]){
-  //   faderPos[1] = faderValue;
-  // }
+  faderValue = analogRead(F2);
+  if (faderValue > faderPos[1] + FADER_THRESHOLD || faderValue < faderPos[1] - FADER_THRESHOLD) {
+    display.clear();
+    if (globalPosIsActive) {
+      globalNote = getMidiValueFromFader(faderValue);
+      if (globalNote < 21) {
+        globalNote = 21;
+      }
+      char* note = getNoteFromMidiValue(globalNote);
+      display.print(note);
+    }
+    else if (selectedPushPin != -1) {
+      pushNote[selectedPushPin] = getMidiValueFromFader(faderValue);
+      if (pushNote[selectedPushPin] < 21) {
+        pushNote[selectedPushPin] = 21;
+      }
+      char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+      display.print(note);
+    }
+    faderPos[1] = faderValue;
+  }
 
   // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
+  // en mode note repeat permet de changer la vitesse.
+  // voir comment changer l'effet (midi, tremolo etc...)
+  // Ajouter un bouton reset des settings globaux.
 
   int position = P1.read();
   if (position != 0 && encoderPos[0] != position) {
      display.clear();
      if (globalPosIsActive) {
-      globalVelocity = getMidiValueFromEncoder(globalVelocity, position, encoderPos[0]);
+      globalVelocity = getMidiValueFromEncoder(globalVelocity, position, encoderPos[0], 0);
       display.print(globalVelocity);
     }
     else if (selectedPushPin != -1) {
-      pushVelocity[selectedPushPin] = getMidiValueFromEncoder(pushVelocity[selectedPushPin], position, encoderPos[0]);
+      pushVelocity[selectedPushPin] = getMidiValueFromEncoder(pushVelocity[selectedPushPin], position, encoderPos[0], 0);
       display.print(pushVelocity[selectedPushPin]);
     }
     encoderPos[0] = position;
   }
 
-  // position = P2.read();
-  // if (position != 0 && encoderPos[1] != position) {
-  //   encoderPos[1] = position;
-  //   // tm.clearScreen();
-  //   // tm.display(String(position));
-  // }
+  position = P2.read();
+  if (position != 0 && encoderPos[1] != position) {
+     display.clear();
+     if (globalPosIsActive) {
+      globalNote = getMidiValueFromEncoder(globalNote, position, encoderPos[1], 21);
+      if (globalNote < 21) {
+        globalNote = 21;
+      }
+      char* note = getNoteFromMidiValue(globalNote);
+      display.print(note);
+    }
+    else if (selectedPushPin != -1) {
+      pushNote[selectedPushPin] = getMidiValueFromEncoder(pushNote[selectedPushPin], position, encoderPos[1], 0);
+      char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+      display.print(note);
+    }
+    encoderPos[1] = position;
+  }
 
   for (int p = 0; p < NB_PUSH; p++) {
 
@@ -340,12 +372,14 @@ void loop() {
     int sensorVal = digitalRead(MUXSIG);
 
     int currentVelocity = pushVelocity[p];
+    int currentNote = pushNote[p];
     if (globalPosIsActive) {
       currentVelocity = globalVelocity;
+      currentNote = globalNote;
     }
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-        MIDI.sendNoteOn(pushNote[p], currentVelocity, midiChannel);
+        MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
         isPushed[p] = PUSHED;
         digitalWrite(LED_BUILTIN, HIGH);
         selectedPushPin = p;
@@ -356,7 +390,7 @@ void loop() {
     }
     if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
         isPushed[p] = RELEASED;
-        MIDI.sendNoteOff(pushNote[p], currentVelocity, midiChannel);
+        MIDI.sendNoteOff(currentNote, currentVelocity, midiChannel);
         digitalWrite(LED_BUILTIN, LOW);
     }
   }
@@ -434,7 +468,7 @@ long int getMidiValueFromFader(long int faderValue) {
   return 127 - (faderValue * 127 / 1024);
 }
 
-int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosition) {
+long int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosition, int minValue) {
   int delta = position - previousPosition;
   int newMidiValue = currentMidiValue + delta;
   if (newMidiValue >= 127) {
@@ -446,8 +480,8 @@ int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosi
   return newMidiValue;
 }
 
-String getNoteFromFaderValue(int faderValue) {
-  return midiNote[getMidiValueFromFader(faderValue)];
+char* getNoteFromMidiValue(int midiValue) {
+  return midiNote[midiValue];
 }
 
 void Sync() {
