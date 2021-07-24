@@ -219,16 +219,28 @@ const int SW2 = 1;
 const int SW3 = 10;
 const int SW4 = 13;
 
-// MIDI Clock
+// @todo: ajouter un bouton reset qui peut aussi servir a verrouiller un note repeat.
+
+bool midiCCIsActive = false;
+bool globalPosIsActive = false;
+bool ultrasonicSensorIsActive = false;
+bool noteRepeatIsActive = false;
+
+// MIDI
 
 #define MIDI_CLOCK 0xF8
 #define MIDI_START 0xFA
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
+int currentNote = globalNote;
+int currentVelocity = globalVelocity;
 int play_flag = 0;
 int midiCLockTick = 0;
 long int quarterNoteTime = 0;
 int bpm = 120;
+float noteRepeat;
+int repeatSpeedDividend = 1;
+int repeatSpeedDivisor = 4;
 
 void setup() {
 
@@ -240,7 +252,7 @@ void setup() {
   delay(500);
   display.blink();
   display.print("P0AH PLAY");
-  display.snake(3, 70);
+  display.snake(2, 70);
 
   // Encoders:
   pinMode(P1CLK, INPUT);
@@ -280,20 +292,20 @@ void loop() {
     play_flag = 0;
   }
   else if ((serialData == MIDI_CLOCK) && (play_flag == 1)) {
-    Sync();
+    MidiSync();
   }
 
   mux.channel(SW1);
-  bool midiCCIsActive = digitalRead(MUXSIG);
+  midiCCIsActive = digitalRead(MUXSIG);
 
   mux.channel(SW2);
-  bool globalPosIsActive = digitalRead(MUXSIG);
+  globalPosIsActive = digitalRead(MUXSIG);
 
   mux.channel(SW3);
-  bool ultrasonicSensorIsActive = digitalRead(MUXSIG);
+  ultrasonicSensorIsActive = digitalRead(MUXSIG);
 
   mux.channel(SW4);
-  bool noteRepeatIsActive = digitalRead(MUXSIG);
+  noteRepeatIsActive = digitalRead(MUXSIG);
 
   int faderValue = analogRead(F1);
   if (faderValue > faderPos[0] + FADER_THRESHOLD || faderValue < faderPos[0] - FADER_THRESHOLD) {
@@ -314,8 +326,8 @@ void loop() {
     display.clear();
     if (globalPosIsActive) {
       globalNote = getMidiValueFromFader(faderValue);
-      if (globalNote < 21) {
-        globalNote = 21;
+      if (globalNote < 20) {
+        globalNote = 20;
       }
       char* note = getNoteFromMidiValue(globalNote);
       display.print(note);
@@ -355,8 +367,8 @@ void loop() {
      display.clear();
      if (globalPosIsActive) {
       globalNote = getMidiValueFromEncoder(globalNote, position, encoderPos[1], 21);
-      if (globalNote < 21) {
-        globalNote = 21;
+      if (globalNote < 20) {
+        globalNote = 20;
       }
       char* note = getNoteFromMidiValue(globalNote);
       display.print(note);
@@ -374,61 +386,23 @@ void loop() {
     mux.channel(pushPin[p]);
     int sensorVal = digitalRead(MUXSIG);
 
-    int currentVelocity = pushVelocity[p];
-    int currentNote = pushNote[p];
-    if (globalPosIsActive) {
-      currentVelocity = globalVelocity;
-      currentNote = globalNote;
-    }
-
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-        MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
         isPushed[p] = PUSHED;
-        digitalWrite(LED_BUILTIN, HIGH);
         selectedPushPin = p;
+        playPush(p, 1);
         if (!globalPosIsActive) {
           display.clear();
-          display.print(currentVelocity);
+          display.print("PAd" + String(p+1));
         }
     }
     if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
-        isPushed[p] = RELEASED;
-        MIDI.sendNoteOff(currentNote, currentVelocity, midiChannel);
-        digitalWrite(LED_BUILTIN, LOW);
+      isPushed[p] = RELEASED;
+      playPush(p, 0);
     }
   }
 
   // double distance = distanceSensor.measureDistanceCm();
   // Serial.println(distance);
-
-  if (!globalPosIsActive) {
-    switch (selectedPushPin) {
-      case 0:
-        writeLeds(HIGH, HIGH, LOW, LOW);
-        break;
-      case 1:
-        writeLeds(HIGH, LOW, HIGH, LOW);
-        break;
-      case 2:
-        writeLeds(LOW, HIGH, LOW, HIGH);
-        break;
-      case 3:
-        writeLeds(LOW, LOW, HIGH, HIGH);
-        break;
-      case 4:
-        writeLeds(HIGH, LOW, LOW, LOW);
-        break;
-      case 5:
-        writeLeds(LOW, HIGH, LOW, LOW);
-        break;
-      case 6:
-        writeLeds(LOW, LOW, HIGH, LOW);
-        break;
-      case 7:
-        writeLeds(LOW, LOW, LOW, HIGH);
-        break;
-    }
-  }
 }
 
 void writeLeds(int s1, int s2, int s3, int s4) {
@@ -436,6 +410,23 @@ void writeLeds(int s1, int s2, int s3, int s4) {
   int states[4] = {s1, s2, s3, s4};
   for (int i = 0; i < 4; i++) {
     digitalWrite(ledPin[i], states[i]);
+  }
+}
+
+void playPush(int pin, bool state) {
+  currentVelocity = pushVelocity[pin];
+  currentNote = pushNote[pin];
+  if (globalPosIsActive) {
+    currentVelocity = globalVelocity;
+    currentNote = globalNote;
+  }
+  if (state) {
+    MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
+  else {
+    MIDI.sendNoteOff(currentNote, currentVelocity, midiChannel);
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -465,32 +456,49 @@ char* getNoteFromMidiValue(int midiValue) {
   return midiNote[midiValue];
 }
 
-void Sync() {
+void MidiSync() {
   midiCLockTick++;
+  // if (noteRepeatIsActive) {
+  if (true) {
+    float ticksPerBeat = ticksPerNote * repeatSpeedDividend / repeatSpeedDivisor;
+    if (midiCLockTick == ticksPerBeat) {
+      for (int pin = 0; pin < NB_PUSH; pin++) {
+        if (isPushed[pin]) {
+          playPush(pin, 1);
+        }
+      }
+    }
+    if (midiCLockTick == ticksPerBeat+1) {
+      for (int pin = 0; pin < NB_PUSH; pin++) {
+        if (isPushed[pin]) {
+          playPush(pin, 0);
+        }
+      }
+    }
+  }
   if (midiCLockTick == 24) {
     // Tempo:
-    currentQuarter++;
     if (currentQuarter > 4) {
       currentQuarter = 1;
     }
-    if (!globalPosIsActive) {
-      if (currentQuarter == 1) {
-        writeLeds(HIGH, LOW, LOW, LOW);
-      }
-      if (currentQuarter == 2) {
-        writeLeds(HIGH, HIGH, LOW, LOW);
-      }
-      if (currentQuarter == 3) {
-        writeLeds(HIGH, HIGH, HIGH, LOW);
-      }
-      if (currentQuarter == 4) {
-        writeLeds(HIGH, HIGH, HIGH, HIGH);
-      }
+    if (currentQuarter == 1) {
+      writeLeds(HIGH, LOW, LOW, LOW);
     }
+    if (currentQuarter == 2) {
+      writeLeds(HIGH, HIGH, LOW, LOW);
+    }
+    if (currentQuarter == 3) {
+      writeLeds(HIGH, HIGH, HIGH, LOW);
+    }
+    if (currentQuarter == 4) {
+      writeLeds(HIGH, HIGH, HIGH, HIGH);
+    }
+    currentQuarter++;
+
     // BPM:
     quarterNoteTime = millis() - quarterNoteTime;
     long int newBpm = 60000/quarterNoteTime;
-    if (bpm > newBpm + 1 || bpm < newBpm + 1) {
+    if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
       display.clear();
       display.print(bpm);
