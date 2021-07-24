@@ -423,10 +423,12 @@ void playPush(int pin, bool state) {
   if (state) {
     MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
     digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(MAGNET, HIGH);
   }
   else {
     MIDI.sendNoteOff(currentNote, currentVelocity, midiChannel);
     digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(MAGNET, LOW);
   }
 }
 
