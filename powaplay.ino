@@ -51,6 +51,8 @@ MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 int midiChannel = 2;
 int globalVelocity = 127;
 int globalNote = 60;
+int clockTicksForNote = 96;
+int currentQuarter = 1;
 
 char* midiNote[128] = {"","","","","","","","","","","","","","","","","","","","",
   " A0",
@@ -169,6 +171,7 @@ const int LCD_CLK = 12;
 const int LCD_DIO = 11;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
+// @todo trouver une autre classe sans défilement pour afficher les notes.
 
 // Push buttons:
 
@@ -226,6 +229,7 @@ const int SW4 = 13;
 int play_flag = 0;
 int midiCLockTick = 0;
 long int quarterNoteTime = 0;
+int bpm = 120;
 
 void setup() {
 
@@ -398,63 +402,41 @@ void loop() {
   // double distance = distanceSensor.measureDistanceCm();
   // Serial.println(distance);
 
-  if (globalPosIsActive) {
-    digitalWrite(L1, HIGH);
-    digitalWrite(L2, HIGH);
-    digitalWrite(L3, HIGH);
-    digitalWrite(L4, HIGH);
-  }
-  else {
+  if (!globalPosIsActive) {
     switch (selectedPushPin) {
       case 0:
-        digitalWrite(L1, HIGH);
-        digitalWrite(L2, HIGH);
-        digitalWrite(L3, LOW);
-        digitalWrite(L4, LOW);
+        writeLeds(HIGH, HIGH, LOW, LOW);
         break;
       case 1:
-        digitalWrite(L1, HIGH);
-        digitalWrite(L2, LOW);
-        digitalWrite(L3, HIGH);
-        digitalWrite(L4, LOW);
+        writeLeds(HIGH, LOW, HIGH, LOW);
         break;
       case 2:
-        digitalWrite(L1, LOW);
-        digitalWrite(L2, HIGH);
-        digitalWrite(L3, LOW);
-        digitalWrite(L4, HIGH);
+        writeLeds(LOW, HIGH, LOW, HIGH);
         break;
       case 3:
-        digitalWrite(L1, LOW);
-        digitalWrite(L2, LOW);
-        digitalWrite(L3, HIGH);
-        digitalWrite(L4, HIGH);
+        writeLeds(LOW, LOW, HIGH, HIGH);
         break;
       case 4:
-        digitalWrite(L1, HIGH);
-        digitalWrite(L2, LOW);
-        digitalWrite(L3, LOW);
-        digitalWrite(L4, LOW);
+        writeLeds(HIGH, LOW, LOW, LOW);
         break;
       case 5:
-        digitalWrite(L1, LOW);
-        digitalWrite(L2, HIGH);
-        digitalWrite(L3, LOW);
-        digitalWrite(L4, LOW);
+        writeLeds(LOW, HIGH, LOW, LOW);
         break;
       case 6:
-        digitalWrite(L1, LOW);
-        digitalWrite(L2, LOW);
-        digitalWrite(L3, HIGH);
-        digitalWrite(L4, LOW);
+        writeLeds(LOW, LOW, HIGH, LOW);
         break;
       case 7:
-        digitalWrite(L1, LOW);
-        digitalWrite(L2, LOW);
-        digitalWrite(L3, LOW);
-        digitalWrite(L4, HIGH);
+        writeLeds(LOW, LOW, LOW, HIGH);
         break;
     }
+  }
+}
+
+void writeLeds(int s1, int s2, int s3, int s4) {
+  int ledPin[4] = {L1, L2, L3, L4};
+  int states[4] = {s1, s2, s3, s4};
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(ledPin[i], states[i]);
   }
 }
 
@@ -487,10 +469,33 @@ char* getNoteFromMidiValue(int midiValue) {
 void Sync() {
   midiCLockTick++;
   if (midiCLockTick == 24) {
+    // Tempo:
+    currentQuarter++;
+    if (currentQuarter > 4) {
+      currentQuarter = 1;
+    }
+    if (!globalPosIsActive) {
+      if (currentQuarter == 1) {
+        writeLeds(HIGH, LOW, LOW, LOW);
+      }
+      if (currentQuarter == 2) {
+        writeLeds(HIGH, HIGH, LOW, LOW);
+      }
+      if (currentQuarter == 3) {
+        writeLeds(HIGH, HIGH, HIGH, LOW);
+      }
+      if (currentQuarter == 4) {
+        writeLeds(HIGH, HIGH, HIGH, HIGH);
+      }
+    }
+    // BPM:
     quarterNoteTime = millis() - quarterNoteTime;
-    long int bpm = 60000/quarterNoteTime;
-    display.clear();
-    display.print(bpm);
+    long int newBpm = 60000/quarterNoteTime;
+    if (bpm > newBpm + 1 || bpm < newBpm + 1) {
+      bpm = newBpm;
+      display.clear();
+      display.print(bpm);
+    }
     midiCLockTick = 0;
     quarterNoteTime = millis();
   }
