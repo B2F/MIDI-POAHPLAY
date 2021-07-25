@@ -293,8 +293,7 @@ void loop() {
   serialData = Serial.read();
   if (serialData == MIDI_START || serialData == MIDI_CONTINUE) {
     play_flag = 1;
-    display.clear();
-    display.print("PLAY");
+    displayPrintString("PLAY");
   }
   else if (serialData == MIDI_STOP) {
     play_flag = 0;
@@ -305,66 +304,13 @@ void loop() {
 
   readSwitches();
 
-  int faderValue = 127;
-  int encoderValue = 0;
   if (midiCCIsActive) {
-
-    // @todo Ajouter 8 raccourcis de midiCC via les pads lorsque les switch encoder sont sélectionnés.
-    mux.channel(P1SW);
-    if (digitalRead(MUXSIG) == PUSHED) {
-      encoderValue = readEncoder(1);
-      if (encoderValue != encoderPos[1]) {
-        midiCC1 = getMidiValueFromEncoder(midiCC1, encoderValue, encoderPos[1]);
-        encoderPos[1] = encoderValue;
-        display.print("C" + String(midiCC1));
-      }
-    }
-    else {
-      mux.channel(P2SW);
-      if (digitalRead(MUXSIG) == PUSHED) {
-        encoderValue = readEncoder(0);
-        if (encoderValue != encoderPos[0]) {
-          midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
-          display.print("C" + String(midiCC2));
-          encoderPos[0] = encoderValue;
-        }
-      }
-    }
-
-    encoderValue = readEncoder(0);
-    if (encoderValue != encoderPos[0]) {
-      midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
-      MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-      encoderPos[0] = encoderValue;
-      display.clear();
-      display.print(midiCC1Value);
-    }
-    encoderValue = readEncoder(1);
-    if (encoderValue != encoderPos[1]) {
-      midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
-      MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-      encoderPos[1] = encoderValue;
-      display.clear();
-      display.print(midiCC2Value);
-    }
-    faderValue = readFader(0);
-    if (faderValue != faderPos[0]) {
-      faderPos[0] = faderValue;
-      midiCC1Value = getMidiValueFromFader(faderPos[0]);
-      MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-      display.clear();
-      display.print(midiCC1Value);
-    }
-    faderValue = readFader(1);
-    if (faderValue != faderPos[1]) {
-      faderPos[1] = faderValue;
-      midiCC2Value = getMidiValueFromFader(faderPos[1]);
-      MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-      display.clear();
-      display.print(midiCC2Value);
-    }
+    updateMidiControls();
   }
   else {
+
+    int encoderValue = 127;
+    int faderValue = 0;
 
     faderValue = readFader(0);
     if (faderValue != faderPos[0]) {
@@ -373,31 +319,60 @@ void loop() {
       updateVelocity(newMidiValue, newMidiValue);
     }
 
-    encoderValue = readEncoder(0);
-    if (encoderValue != encoderPos[0]) {
-      updateVelocity(
-        getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
-        getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
-      );
-      encoderPos[0] = encoderValue;
-    }
-
     faderValue = readFader(1);
     if (faderValue != faderPos[1]) {
       int newMidiValue = getMidiValueFromFader(faderPos[1]);
       MIDI.sendPitchBend(newMidiValue, midiChannel);
-      display.clear();
-      display.print(newMidiValue);
+      displayPrintInt(newMidiValue);
       faderPos[1] = faderValue;
     }
 
-    encoderValue = readEncoder(1);
-    if (encoderValue != encoderPos[1]) {
-      updateNotes(
-        (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
-        getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
-      );
-      encoderPos[1] = encoderValue;
+    if (noteRepeatIsActive) {
+      bool changed = false;
+      encoderValue = readEncoder(0);
+      if (encoderValue != encoderPos[0]) {
+        repeatSpeedDividend = repeatSpeedDividend + encoderValue - encoderPos[0];
+        if (repeatSpeedDividend > repeatSpeedDivisor) {
+          repeatSpeedDividend = repeatSpeedDivisor;
+        }
+        if (repeatSpeedDividend < 1) { repeatSpeedDividend = 1; }
+        encoderPos[0] = encoderValue;
+        changed = true;
+      }
+      encoderValue = readEncoder(1);
+      if (encoderValue != encoderPos[1]) {
+        repeatSpeedDivisor = repeatSpeedDivisor + encoderValue - encoderPos[1];
+        if (repeatSpeedDivisor > 32) {
+          repeatSpeedDivisor = 32;
+        }
+        if (repeatSpeedDivisor < 1) { repeatSpeedDivisor = 1; }
+        encoderPos[1] = encoderValue;
+        changed = true;
+      }
+      if (changed) {
+        String dividend = repeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
+        display.clear();
+        display.print(dividend + String(repeatSpeedDivisor));
+        display.setColonOn(true);
+      }
+    }
+    else {
+      encoderValue = readEncoder(0);
+      if (encoderValue != encoderPos[0]) {
+        updateVelocity(
+          getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
+          getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
+        );
+        encoderPos[0] = encoderValue;
+      }
+      encoderValue = readEncoder(1);
+      if (encoderValue != encoderPos[1]) {
+        updateNotes(
+          (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
+          getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
+        );
+        encoderPos[1] = encoderValue;
+      }
     }
   }
 
@@ -481,34 +456,32 @@ int readEncoder(int e) {
 }
 
 void updateVelocity(int globalMidiValue, int localMidiValue) {
-  display.clear();
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
-    display.print(localMidiValue);
+    displayPrintInt(localMidiValue);
   }
   else {
     globalVelocity = globalMidiValue;
     pushVelocity[selectedPushPin] = globalVelocity;
-    display.print(globalVelocity);
+    displayPrintInt(globalVelocity);
   }
 }
 
 void updateNotes(int globalMidiOffset, int localMidiOffset) {
-  display.clear();
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushNote[selectedPushPin] = localMidiOffset;
     if (pushNote[selectedPushPin] < 20) {
       pushNote[selectedPushPin] = 20;
     }
     char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
-    display.print(note);
+    displayPrintChar(note);
   }
   else {
     globalNoteOffset = globalMidiOffset;
     if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
     if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
     char* note = getNoteFromMidiValue(60+globalNoteOffset);
-    display.print(note);
+    displayPrintChar(note);
   }
 }
 
@@ -522,22 +495,18 @@ void updatePads() {
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
 
       if (padSettingsLockIsActive && pushSettingsLocked[p] != true) {
-        display.clear();
         pushSettingsLocked[p] = true;
-        display.print("PAd" + String(p+1));
+        displayPrintString("PAd" + String(p+1));
       }
       else if (padSettingsUnlockIsActive && pushSettingsLocked[p] != false) {
-        display.clear();
         pushSettingsLocked[p] = false;
-        display.print("Glob");
+        displayPrintString("Glob");
       }
       else if (selectedPushPin != p && pushSettingsLocked[p] == true) {
-        display.clear();
-        display.print(pushVelocity[p]);
+        displayPrintInt(pushVelocity[p]);
       }
       else if (selectedPushPin != p && pushSettingsLocked[p] == false) {
-        display.clear();
-        display.print(globalVelocity);
+        displayPrintInt(globalVelocity);
       }
 
       isPushed[p] = PUSHED;
@@ -595,8 +564,7 @@ void MidiSync() {
     long int newBpm = 60000/quarterNoteTime;
     if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
-      display.clear();
-      display.print(bpm);
+      displayPrintInt(bpm);
     }
     midiCLockTick = 0;
     quarterNoteTime = millis();
@@ -632,4 +600,83 @@ void readSwitches() {
     }
     padSettingsLockIsActive = false;
   }
+}
+
+void updateMidiControls() {
+
+  int faderValue = 127;
+  int encoderValue = 0;
+
+  if (!ultrasonicSensorIsActive) {
+    // @todo Ajouter 8 raccourcis de midiCC via les pads lorsque les switch encoder sont sélectionnés.
+    mux.channel(P1SW);
+    if (digitalRead(MUXSIG) == PUSHED) {
+      encoderValue = readEncoder(1);
+      if (encoderValue != encoderPos[1]) {
+        midiCC1 = getMidiValueFromEncoder(midiCC1, encoderValue, encoderPos[1]);
+        encoderPos[1] = encoderValue;
+        displayPrintString("C" + String(midiCC1));
+      }
+    }
+    else {
+      mux.channel(P2SW);
+      if (digitalRead(MUXSIG) == PUSHED) {
+        encoderValue = readEncoder(0);
+        if (encoderValue != encoderPos[0]) {
+          midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
+          displayPrintString("C" + String(midiCC2));
+          encoderPos[0] = encoderValue;
+        }
+      }
+    }
+  }
+
+  if (!noteRepeatIsActive) {
+    encoderValue = readEncoder(0);
+    if (encoderValue != encoderPos[0]) {
+      midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
+      MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
+      encoderPos[0] = encoderValue;
+      displayPrintInt(midiCC1Value);
+    }
+    encoderValue = readEncoder(1);
+    if (encoderValue != encoderPos[1]) {
+      midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
+      MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
+      encoderPos[1] = encoderValue;
+      displayPrintInt(midiCC2Value);
+    }
+  }
+  faderValue = readFader(0);
+  if (faderValue != faderPos[0]) {
+    faderPos[0] = faderValue;
+    midiCC1Value = getMidiValueFromFader(faderPos[0]);
+    MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
+    displayPrintInt(midiCC1Value);
+  }
+  faderValue = readFader(1);
+  if (faderValue != faderPos[1]) {
+    faderPos[1] = faderValue;
+    midiCC2Value = getMidiValueFromFader(faderPos[1]);
+    MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
+    displayPrintInt(midiCC2Value);
+  }
+}
+
+void displayPrintString(String s) {
+  display.setColonOn(false);
+  display.clear();
+  display.print(s);
+}
+
+void displayPrintInt(int i) {
+  display.setColonOn(false);
+  display.clear();
+  display.print(i);
+}
+
+void displayPrintChar(char* c) {
+  display.setColonOn(false);
+  display.clear();
+  display.print(c);
 }
