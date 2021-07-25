@@ -189,6 +189,7 @@ int selectedPushPin = -1;
 const int F1 = A6;
 const int F2 = A7;
 
+int faderPin[2] = {F1, F2};
 int faderPos[2] = {0, 0};
 
 const int MAX_FADER_VALUE = 970;
@@ -306,98 +307,45 @@ void loop() {
   mux.channel(SW4);
   noteRepeatIsActive = digitalRead(MUXSIG);
 
-  int faderValue = analogRead(F1);
-  if (faderValue > faderPos[0] + FADER_THRESHOLD || faderValue < faderPos[0] - FADER_THRESHOLD) {
-    display.clear();
-    if (globalPosIsActive) {
-      globalVelocity = getMidiValueFromFader(faderValue);
-      display.print(globalVelocity);
-    }
-    else if (selectedPushPin != -1) {
-      pushVelocity[selectedPushPin] = getMidiValueFromFader(faderValue);
-      display.print(pushVelocity[selectedPushPin]);
-    }
-    faderPos[0] = faderValue;
-  }
-
-  faderValue = analogRead(F2);
-  if (faderValue > faderPos[1] + FADER_THRESHOLD || faderValue < faderPos[1] - FADER_THRESHOLD) {
-    display.clear();
-    if (globalPosIsActive) {
-      globalNoteOffset = getMidiValueFromFader(faderValue) - 67;
-      if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
-      if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
-      char* note = getNoteFromMidiValue(60+globalNoteOffset);
-      display.print(note);
-    }
-    else if (selectedPushPin != -1) {
-      pushNote[selectedPushPin] = getMidiValueFromFader(faderValue);
-      if (pushNote[selectedPushPin] < 20) {
-        pushNote[selectedPushPin] = 20;
-      }
-      char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
-      display.print(note);
-    }
-    faderPos[1] = faderValue;
-  }
-
   // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
   // en mode note repeat permet de changer la vitesse.
   // voir comment changer l'effet (midi, tremolo etc...)
   // Ajouter un bouton reset des settings globaux.
 
-  int position = P1.read();
-  if (position != 0 && encoderPos[0] != position) {
-     display.clear();
-     if (globalPosIsActive) {
-      globalVelocity = getMidiValueFromEncoder(globalVelocity, position, encoderPos[0]);
-      display.print(globalVelocity);
-    }
-    else if (selectedPushPin != -1) {
-      pushVelocity[selectedPushPin] = getMidiValueFromEncoder(pushVelocity[selectedPushPin], position, encoderPos[0]);
-      display.print(pushVelocity[selectedPushPin]);
-    }
-    encoderPos[0] = position;
+  int faderValue = readFader(0);
+  if (faderValue != faderPos[0]) {
+    faderPos[0] = faderValue;
+    int newMidiValue = getMidiValueFromFader(faderPos[0]);
+    updateVelocity(newMidiValue, newMidiValue);
   }
 
-  position = P2.read();
-  if (position != 0 && encoderPos[1] != position) {
-    display.clear();
-    if (globalPosIsActive) {
-      globalNoteOffset = getMidiValueFromEncoder(60+globalNoteOffset, position, encoderPos[1]) - 60;
-      if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
-      if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
-      char* note = getNoteFromMidiValue(60+globalNoteOffset);
-      display.print(note);
-    }
-    else if (selectedPushPin != -1) {
-      pushNote[selectedPushPin] = getMidiValueFromEncoder(pushNote[selectedPushPin], position, encoderPos[1]);
-      if (pushNote[selectedPushPin] < 20) { pushNote[selectedPushPin] = 20; }
-      char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
-      display.print(note);
-    }
-    encoderPos[1] = position;
+  int encoderValue = readEncoder(0);
+  if (encoderValue != encoderPos[0]) {
+    updateVelocity(
+      getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
+      getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
+    );
+    encoderPos[0] = encoderValue;
   }
 
-  for (int p = 0; p < NB_PUSH; p++) {
-
-    mux.channel(pushPin[p]);
-    int sensorVal = digitalRead(MUXSIG);
-
-    if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-        isPushed[p] = PUSHED;
-        selectedPushPin = p;
-        playPush(p, 1);
-        if (!globalPosIsActive) {
-          display.clear();
-          display.print("PAd" + String(p+1));
-        }
-    }
-    if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
-      isPushed[p] = RELEASED;
-      playPush(p, 0);
-    }
+  faderValue = readFader(1);
+  if (faderValue != faderPos[1]) {
+    // Min global fader offset is 127 - 60 (global base note) = 67.
+    int newMidiValue = getMidiValueFromFader(faderPos[1]);
+    updateNotes(newMidiValue-67, newMidiValue);
+    faderPos[1] = faderValue;
   }
+
+  encoderValue = readEncoder(1);
+  if (encoderValue != encoderPos[1]) {
+    updateNotes(
+      (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
+      getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
+    );
+    encoderPos[1] = encoderValue;
+  }
+
+  updatePads();
 
   // double distance = distanceSensor.measureDistanceCm();
   // Serial.println(distance);
@@ -454,6 +402,80 @@ long int getMidiValueFromEncoder(int currentMidiValue, int position, int previou
 
 char* getNoteFromMidiValue(int midiValue) {
   return midiNote[midiValue];
+}
+
+int readFader(int f) {
+  int faderValue = analogRead(faderPin[f]);
+  if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
+    return faderValue;
+  }
+  else {
+    return faderPos[f];
+  }
+}
+
+int readEncoder(int e) {
+  int position = encoder[e].read();
+  if (position != 0 && encoderPos[e] != position) {
+    return position;
+  }
+  else {
+    return encoderPos[e];
+  }
+}
+
+void updateVelocity(int globalMidiValue, int localMidiValue) {
+  display.clear();
+  if (globalPosIsActive) {
+    globalVelocity = globalMidiValue;
+    display.print(globalVelocity);
+  }
+  else if (selectedPushPin != -1) {
+    pushVelocity[selectedPushPin] = localMidiValue;
+    display.print(localMidiValue);
+  }
+}
+
+void updateNotes(int globalMidiOffset, int localMidiOffset) {
+  display.clear();
+  if (globalPosIsActive) {
+    globalNoteOffset = globalMidiOffset;
+    if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
+    if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
+    char* note = getNoteFromMidiValue(60+globalNoteOffset);
+    display.print(note);
+  }
+  else if (selectedPushPin != -1) {
+    pushNote[selectedPushPin] = localMidiOffset;
+    if (pushNote[selectedPushPin] < 20) {
+      pushNote[selectedPushPin] = 20;
+    }
+    char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+    display.print(note);
+  }
+}
+
+void updatePads() {
+
+    for (int p = 0; p < NB_PUSH; p++) {
+
+    mux.channel(pushPin[p]);
+    int sensorVal = digitalRead(MUXSIG);
+
+    if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
+        isPushed[p] = PUSHED;
+        selectedPushPin = p;
+        playPush(p, 1);
+        if (!globalPosIsActive) {
+          display.clear();
+          display.print("PAd" + String(p+1));
+        }
+    }
+    if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
+      isPushed[p] = RELEASED;
+      playPush(p, 0);
+    }
+  }
 }
 
 void MidiSync() {
