@@ -19,10 +19,10 @@ const int NB_ENCODERS = 2;
 
 const int P1CLK = 2;
 const int P1DT = 4;
-const int P1SW = 14;
+const int P1SW = 15;
 const int P2CLK = 3;
 const int P2DT = 5;
-const int P2SW = 15;
+const int P2SW = 14;
 
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
@@ -181,6 +181,7 @@ const int NB_PUSH = 8;
 int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 int pushNote[NB_PUSH] = {60, 61, 62, 63, 64, 65, 66, 67};
 int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
+int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 int selectedPushPin = -1;
 
@@ -223,9 +224,10 @@ const int SW4 = 13;
 // @todo: ajouter un bouton reset qui peut aussi servir a verrouiller un note repeat.
 
 bool midiCCIsActive = false;
-bool globalPosIsActive = false;
 bool ultrasonicSensorIsActive = false;
 bool noteRepeatIsActive = false;
+bool padSettingsLockIsActive = false;
+bool padSettingsUnlockIsActive = false;
 
 // MIDI
 
@@ -295,54 +297,77 @@ void loop() {
     MidiSync();
   }
 
-  mux.channel(SW1);
-  midiCCIsActive = digitalRead(MUXSIG);
+  readSwitches();
 
-  mux.channel(SW2);
-  globalPosIsActive = digitalRead(MUXSIG);
+  int faderValue = 127;
+  int encoderValue = 0;
+  if (midiCCIsActive) {
 
-  mux.channel(SW3);
-  ultrasonicSensorIsActive = digitalRead(MUXSIG);
+    // @todo Ajouter 8 raccourcis de midiCC via les pads lorsque les switch encoder sont sélectionnés.
+    if (digitalRead(P1SW) == PUSHED) {
+      encoderValue = readEncoder(1);
+      if (encoderValue != encoderPos[1]) {
+        midiCC1 = getMidiValueFromEncoder(midiCC1, encoderValue, encoderPos[1]);
+        encoderPos[1] = encoderValue;
+        display.print("CC" + String(midiCC1));
+      }
+    }
+    else if (digitalRead(P2SW) == PUSHED) {
+      if (encoderValue != encoderPos[0]) {
+        midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
+        display.print("CC" + String(midiCC2));
+        encoderPos[0] = encoderValue;
+      }
+    }
 
-  mux.channel(SW4);
-  noteRepeatIsActive = digitalRead(MUXSIG);
-
-  // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
-  // en mode note repeat permet de changer la vitesse.
-  // voir comment changer l'effet (midi, tremolo etc...)
-  // Ajouter un bouton reset des settings globaux.
-
-  int faderValue = readFader(0);
-  if (faderValue != faderPos[0]) {
-    faderPos[0] = faderValue;
-    int newMidiValue = getMidiValueFromFader(faderPos[0]);
-    updateVelocity(newMidiValue, newMidiValue);
+    faderValue = readFader(0);
+    if (faderValue != faderPos[0]) {
+      faderPos[0] = faderValue;
+      int newMidiValue = getMidiValueFromFader(faderPos[0]);
+      MIDI.sendControlChange(midiCC1, getMidiValueFromFader(faderPos[0]), midiChannel);
+    }
+    faderValue = readFader(1);
+    if (faderValue != faderPos[1]) {
+      faderPos[1] = faderValue;
+      int newMidiValue = getMidiValueFromFader(faderPos[1]);
+      MIDI.sendControlChange(midiCC2, getMidiValueFromFader(faderPos[1]), midiChannel);
+    }
   }
+  else {
 
-  int encoderValue = readEncoder(0);
-  if (encoderValue != encoderPos[0]) {
-    updateVelocity(
-      getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
-      getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
-    );
-    encoderPos[0] = encoderValue;
-  }
+    faderValue = readFader(0);
+    if (faderValue != faderPos[0]) {
+      faderPos[0] = faderValue;
+      int newMidiValue = getMidiValueFromFader(faderPos[0]);
+      updateVelocity(newMidiValue, newMidiValue);
+    }
 
-  faderValue = readFader(1);
-  if (faderValue != faderPos[1]) {
-    // Min global fader offset is 127 - 60 (global base note) = 67.
-    int newMidiValue = getMidiValueFromFader(faderPos[1]);
-    updateNotes(newMidiValue-67, newMidiValue);
-    faderPos[1] = faderValue;
-  }
+    encoderValue = readEncoder(0);
+    if (encoderValue != encoderPos[0]) {
+      updateVelocity(
+        getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
+        getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
+      );
+      encoderPos[0] = encoderValue;
+    }
 
-  encoderValue = readEncoder(1);
-  if (encoderValue != encoderPos[1]) {
-    updateNotes(
-      (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
-      getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
-    );
-    encoderPos[1] = encoderValue;
+    faderValue = readFader(1);
+    if (faderValue != faderPos[1]) {
+      int newMidiValue = getMidiValueFromFader(faderPos[1]);
+      MIDI.sendPitchBend(newMidiValue, midiChannel);
+      display.clear();
+      display.print(newMidiValue);
+      faderPos[1] = faderValue;
+    }
+
+    encoderValue = readEncoder(1);
+    if (encoderValue != encoderPos[1]) {
+      updateNotes(
+        (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
+        getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
+      );
+      encoderPos[1] = encoderValue;
+    }
   }
 
   updatePads();
@@ -360,9 +385,9 @@ void writeLeds(int s1, int s2, int s3, int s4) {
 }
 
 void playPush(int pin, bool state) {
-  currentVelocity = pushVelocity[pin];
+  int currentVelocity = pushVelocity[pin];
   int currentNote = pushNote[pin];
-  if (globalPosIsActive) {
+  if (!pushSettingsLocked[pin]) {
     currentVelocity = globalVelocity;
     currentNote += globalNoteOffset;
   }
@@ -426,8 +451,9 @@ int readEncoder(int e) {
 
 void updateVelocity(int globalMidiValue, int localMidiValue) {
   display.clear();
-  if (globalPosIsActive) {
+  if (!pushSettingsLocked[selectedPushPin]) {
     globalVelocity = globalMidiValue;
+    pushVelocity[selectedPushPin] = globalVelocity;
     display.print(globalVelocity);
   }
   else if (selectedPushPin != -1) {
@@ -438,7 +464,7 @@ void updateVelocity(int globalMidiValue, int localMidiValue) {
 
 void updateNotes(int globalMidiOffset, int localMidiOffset) {
   display.clear();
-  if (globalPosIsActive) {
+  if (!pushSettingsLocked[selectedPushPin]) {
     globalNoteOffset = globalMidiOffset;
     if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
     if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
@@ -457,19 +483,27 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
 
 void updatePads() {
 
-    for (int p = 0; p < NB_PUSH; p++) {
+  for (int p = 0; p < NB_PUSH; p++) {
 
     mux.channel(pushPin[p]);
     int sensorVal = digitalRead(MUXSIG);
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-        isPushed[p] = PUSHED;
-        selectedPushPin = p;
-        playPush(p, 1);
-        if (!globalPosIsActive) {
-          display.clear();
-          display.print("PAd" + String(p+1));
-        }
+
+      display.clear();
+      if (padSettingsLockIsActive) {
+        pushSettingsLocked[p] = true;
+        display.print("PAd" + String(p+1));
+      }
+      else if (padSettingsUnlockIsActive) {
+        pushSettingsLocked[p] = false;
+        display.print("Glob");
+      }
+
+      isPushed[p] = PUSHED;
+      selectedPushPin = p;
+
+      playPush(p, 1);
     }
     if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
@@ -526,5 +560,37 @@ void MidiSync() {
     }
     midiCLockTick = 0;
     quarterNoteTime = millis();
+  }
+}
+
+void readSwitches() {
+
+  // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
+  // en mode note repeat permet de changer la vitesse.
+  // voir comment changer l'effet (midi, tremolo etc...)
+  // Ajouter un bouton reset des settings globaux.
+  mux.channel(SW1);
+  midiCCIsActive = digitalRead(MUXSIG);
+
+  mux.channel(SW2);
+  noteRepeatIsActive = digitalRead(MUXSIG);
+
+  mux.channel(SW3);
+  ultrasonicSensorIsActive = digitalRead(MUXSIG);
+
+  mux.channel(P1SW);
+  if (digitalRead(MUXSIG) == PUSHED) {
+    padSettingsLockIsActive = true;
+    padSettingsUnlockIsActive = false;
+  }
+  else {
+    mux.channel(P2SW);
+    if (digitalRead(MUXSIG) == PUSHED) {
+      padSettingsUnlockIsActive = true;
+    }
+    else if (digitalRead(MUXSIG) == RELEASED) {
+      padSettingsUnlockIsActive = false;
+    }
+    padSettingsLockIsActive = false;
   }
 }
