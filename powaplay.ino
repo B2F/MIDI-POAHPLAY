@@ -48,6 +48,10 @@ struct HairlessMidiSettings : public midi::DefaultSettings
 
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
+int midiCC1 = 0;
+int midiCC2 = 0;
+int midiCC1Value = 63;
+int midiCC2Value = 63;
 int midiChannel = 2;
 int globalVelocity = 127;
 int globalNoteOffset = 60;
@@ -226,6 +230,8 @@ const int SW4 = 13;
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
 bool noteRepeatIsActive = false;
+bool encoderSwitch1isActive = false;
+bool encoderSwitch2isActive = false;
 bool padSettingsLockIsActive = false;
 bool padSettingsUnlockIsActive = false;
 
@@ -251,7 +257,7 @@ void setup() {
   // LCD:
   display.begin();
   display.print("P0AH");
-  delay(500);
+  delay(1000);
   display.blink();
   display.print("P0AH PLAY");
   display.snake(2, 70);
@@ -304,33 +310,58 @@ void loop() {
   if (midiCCIsActive) {
 
     // @todo Ajouter 8 raccourcis de midiCC via les pads lorsque les switch encoder sont sélectionnés.
-    if (digitalRead(P1SW) == PUSHED) {
+    mux.channel(P1SW);
+    if (digitalRead(MUXSIG) == PUSHED) {
       encoderValue = readEncoder(1);
       if (encoderValue != encoderPos[1]) {
         midiCC1 = getMidiValueFromEncoder(midiCC1, encoderValue, encoderPos[1]);
         encoderPos[1] = encoderValue;
-        display.print("CC" + String(midiCC1));
+        display.print("C" + String(midiCC1));
       }
     }
-    else if (digitalRead(P2SW) == PUSHED) {
-      if (encoderValue != encoderPos[0]) {
-        midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
-        display.print("CC" + String(midiCC2));
-        encoderPos[0] = encoderValue;
+    else {
+      mux.channel(P2SW);
+      if (digitalRead(MUXSIG) == PUSHED) {
+        encoderValue = readEncoder(0);
+        if (encoderValue != encoderPos[0]) {
+          midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
+          display.print("C" + String(midiCC2));
+          encoderPos[0] = encoderValue;
+        }
       }
     }
 
+    encoderValue = readEncoder(0);
+    if (encoderValue != encoderPos[0]) {
+      midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
+      MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
+      encoderPos[0] = encoderValue;
+      display.clear();
+      display.print(midiCC1Value);
+    }
+    encoderValue = readEncoder(1);
+    if (encoderValue != encoderPos[1]) {
+      midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
+      MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
+      encoderPos[1] = encoderValue;
+      display.clear();
+      display.print(midiCC2Value);
+    }
     faderValue = readFader(0);
     if (faderValue != faderPos[0]) {
       faderPos[0] = faderValue;
-      int newMidiValue = getMidiValueFromFader(faderPos[0]);
-      MIDI.sendControlChange(midiCC1, getMidiValueFromFader(faderPos[0]), midiChannel);
+      midiCC1Value = getMidiValueFromFader(faderPos[0]);
+      MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
+      display.clear();
+      display.print(midiCC1Value);
     }
     faderValue = readFader(1);
     if (faderValue != faderPos[1]) {
       faderPos[1] = faderValue;
-      int newMidiValue = getMidiValueFromFader(faderPos[1]);
-      MIDI.sendControlChange(midiCC2, getMidiValueFromFader(faderPos[1]), midiChannel);
+      midiCC2Value = getMidiValueFromFader(faderPos[1]);
+      MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
+      display.clear();
+      display.print(midiCC2Value);
     }
   }
   else {
@@ -451,32 +482,32 @@ int readEncoder(int e) {
 
 void updateVelocity(int globalMidiValue, int localMidiValue) {
   display.clear();
-  if (!pushSettingsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+    pushVelocity[selectedPushPin] = localMidiValue;
+    display.print(localMidiValue);
+  }
+  else {
     globalVelocity = globalMidiValue;
     pushVelocity[selectedPushPin] = globalVelocity;
     display.print(globalVelocity);
-  }
-  else if (selectedPushPin != -1) {
-    pushVelocity[selectedPushPin] = localMidiValue;
-    display.print(localMidiValue);
   }
 }
 
 void updateNotes(int globalMidiOffset, int localMidiOffset) {
   display.clear();
-  if (!pushSettingsLocked[selectedPushPin]) {
-    globalNoteOffset = globalMidiOffset;
-    if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
-    if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
-    char* note = getNoteFromMidiValue(60+globalNoteOffset);
-    display.print(note);
-  }
-  else if (selectedPushPin != -1) {
+  if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushNote[selectedPushPin] = localMidiOffset;
     if (pushNote[selectedPushPin] < 20) {
       pushNote[selectedPushPin] = 20;
     }
     char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+    display.print(note);
+  }
+  else {
+    globalNoteOffset = globalMidiOffset;
+    if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
+    if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
+    char* note = getNoteFromMidiValue(60+globalNoteOffset);
     display.print(note);
   }
 }
@@ -490,14 +521,23 @@ void updatePads() {
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
 
-      display.clear();
-      if (padSettingsLockIsActive) {
+      if (padSettingsLockIsActive && pushSettingsLocked[p] != true) {
+        display.clear();
         pushSettingsLocked[p] = true;
         display.print("PAd" + String(p+1));
       }
-      else if (padSettingsUnlockIsActive) {
+      else if (padSettingsUnlockIsActive && pushSettingsLocked[p] != false) {
+        display.clear();
         pushSettingsLocked[p] = false;
         display.print("Glob");
+      }
+      else if (selectedPushPin != p && pushSettingsLocked[p] == true) {
+        display.clear();
+        display.print(pushVelocity[p]);
+      }
+      else if (selectedPushPin != p && pushSettingsLocked[p] == false) {
+        display.clear();
+        display.print(globalVelocity);
       }
 
       isPushed[p] = PUSHED;
@@ -567,7 +607,6 @@ void readSwitches() {
 
   // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
   // en mode note repeat permet de changer la vitesse.
-  // voir comment changer l'effet (midi, tremolo etc...)
   // Ajouter un bouton reset des settings globaux.
   mux.channel(SW1);
   midiCCIsActive = digitalRead(MUXSIG);
