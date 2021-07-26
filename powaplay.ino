@@ -186,6 +186,7 @@ int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 int pushNote[NB_PUSH] = {60, 61, 62, 63, 64, 65, 66, 67};
 int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
+int pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
 int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 int selectedPushPin = -1;
 
@@ -303,6 +304,7 @@ void loop() {
   }
 
   readSwitches();
+  updatePads();
 
   if (midiCCIsActive) {
     updateMidiControls();
@@ -328,33 +330,7 @@ void loop() {
     }
 
     if (noteRepeatIsActive) {
-      bool changed = false;
-      encoderValue = readEncoder(0);
-      if (encoderValue != encoderPos[0]) {
-        repeatSpeedDividend = repeatSpeedDividend + encoderValue - encoderPos[0];
-        if (repeatSpeedDividend > repeatSpeedDivisor) {
-          repeatSpeedDividend = repeatSpeedDivisor;
-        }
-        if (repeatSpeedDividend < 1) { repeatSpeedDividend = 1; }
-        encoderPos[0] = encoderValue;
-        changed = true;
-      }
-      encoderValue = readEncoder(1);
-      if (encoderValue != encoderPos[1]) {
-        repeatSpeedDivisor = repeatSpeedDivisor + encoderValue - encoderPos[1];
-        if (repeatSpeedDivisor > 32) {
-          repeatSpeedDivisor = 32;
-        }
-        if (repeatSpeedDivisor < 1) { repeatSpeedDivisor = 1; }
-        encoderPos[1] = encoderValue;
-        changed = true;
-      }
-      if (changed) {
-        String dividend = repeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
-        display.clear();
-        display.print(dividend + String(repeatSpeedDivisor));
-        display.setColonOn(true);
-      }
+      updateNoteRepeatSpeed();
     }
     else {
       encoderValue = readEncoder(0);
@@ -375,8 +351,6 @@ void loop() {
       }
     }
   }
-
-  updatePads();
 
   // double distance = distanceSensor.measureDistanceCm();
   // Serial.println(distance);
@@ -524,8 +498,10 @@ void updatePads() {
 void MidiSync() {
   midiCLockTick++;
   if (noteRepeatIsActive) {
-    float ticksPerBeat = ticksPerNote * repeatSpeedDividend / repeatSpeedDivisor;
-    if (midiCLockTick == ticksPerBeat) {
+    int currentRepeatSpeedDividend = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][0] : repeatSpeedDividend;
+    int currentRepeatSpeedDivisor = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][1] : repeatSpeedDivisor;
+    int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
+    if (midiCLockTick % ticksPerBeat == 0) {
       for (int pin = 0; pin < NB_PUSH; pin++) {
         if (isPushed[pin] == PUSHED) {
           playPush(pin, 1);
@@ -540,7 +516,7 @@ void MidiSync() {
       }
     }
   }
-  if (midiCLockTick == 24) {
+  if (midiCLockTick % 24 == 0) {
     // Tempo:
     if (currentQuarter > 4) {
       currentQuarter = 1;
@@ -566,7 +542,6 @@ void MidiSync() {
       bpm = newBpm;
       displayPrintInt(bpm);
     }
-    midiCLockTick = 0;
     quarterNoteTime = millis();
   }
 }
@@ -660,6 +635,41 @@ void updateMidiControls() {
     midiCC2Value = getMidiValueFromFader(faderPos[1]);
     MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
     displayPrintInt(midiCC2Value);
+  }
+}
+
+void updateNoteRepeatSpeed() {
+  bool changed = false;
+  int encoderValue = 0;
+  encoderValue = readEncoder(0);
+  if (encoderValue != encoderPos[0]) {
+    repeatSpeedDividend = repeatSpeedDividend + encoderValue - encoderPos[0];
+    if (repeatSpeedDividend > repeatSpeedDivisor) {
+      repeatSpeedDividend = repeatSpeedDivisor;
+    }
+    if (repeatSpeedDividend < 1) { repeatSpeedDividend = 1; }
+    encoderPos[0] = encoderValue;
+    changed = true;
+  }
+  encoderValue = readEncoder(1);
+  if (encoderValue != encoderPos[1]) {
+    repeatSpeedDivisor = repeatSpeedDivisor + encoderValue - encoderPos[1];
+    if (repeatSpeedDivisor > 32) {
+      repeatSpeedDivisor = 32;
+    }
+    if (repeatSpeedDivisor < 1) { repeatSpeedDivisor = 1; }
+    encoderPos[1] = encoderValue;
+    changed = true;
+  }
+  if (pushSettingsLocked[selectedPushPin]) {
+    pushRepeatSpeed[selectedPushPin][0] = repeatSpeedDividend;
+    pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
+  }
+  if (changed) {
+    String dividend = repeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
+    display.clear();
+    display.print(dividend + String(repeatSpeedDivisor));
+    display.setColonOn(true);
   }
 }
 
