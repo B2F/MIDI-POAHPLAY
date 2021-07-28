@@ -54,11 +54,19 @@ int midiCC1Value = 63;
 int midiCC2Value = 63;
 int midiChannel = 2;
 int globalVelocity = 127;
-int globalNoteOffset = 60;
+int globalNoteOffset = 0;
 int ticksPerNote = 96;
-int currentQuarter = 1;
 
-char* midiNote[128] = {"","","","","","","","","","","","","","","","","","","","",
+char* midiNote[128] = {
+  " C0 ",
+  " CH0",
+  " d0 ",
+  " dH0",
+  " E0 ",
+  " F0 ",
+  " FH0",
+  " G0 ",
+  " GH0",
   " A0 ",
   " AH0",
   " b0 ",
@@ -167,6 +175,17 @@ char* midiNote[128] = {"","","","","","","","","","","","","","","","","","","",
   " FH9",
   " G9 ",
   " GH9",
+  "A10",
+  "AH10",
+  "b10 ",
+  "C10 ",
+  "CH10",
+  "d10 ",
+  "dH10",
+  "E10 ",
+  "F10 ",
+  "FH10",
+  "G10 ",
 };
 
 // LCD
@@ -175,20 +194,6 @@ const int LCD_CLK = 12;
 const int LCD_DIO = 11;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
-
-// Push buttons:
-
-const int PUSHED = LOW;
-const int RELEASED = HIGH;
-const int NB_PUSH = 8;
-
-int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
-int pushNote[NB_PUSH] = {60, 61, 62, 63, 64, 65, 66, 67};
-int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
-int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
-int pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
-int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
-int selectedPushPin = -1;
 
 // Faders:
 
@@ -242,18 +247,42 @@ bool padSettingsUnlockIsActive = false;
 #define MIDI_START 0xFA
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
+#define SONG_POSITION_POINTER 0xF2
 int currentVelocity = globalVelocity;
 int play_flag = 0;
-int midiCLockTick = 0;
+int song_position_flag;
+long int song_position = -1;
+long int midiCLockTick = 0;
 long int quarterNoteTime = 0;
 int bpm = 120;
 float noteRepeat;
 int repeatSpeedDividend = 1;
 int repeatSpeedDivisor = 4;
+int globalStartNote = 48;
+
+// Push buttons:
+
+const int PUSHED = LOW;
+const int RELEASED = HIGH;
+const int NB_PUSH = 8;
+
+int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
+// @todo Dynamic getPushNote setting relative to global if 0 and locked.
+int pushNote[NB_PUSH];
+int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
+int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
+int pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
+int selectedPushPin = -1;
 
 void setup() {
 
   Serial.begin(BAUD_RATE);
+
+  // Push
+  for (int pad = 0; pad < NB_PUSH; pad++) {
+    pushNote[pad] = globalStartNote+pad;
+  }
 
   // LCD:
   display.begin();
@@ -287,14 +316,19 @@ void setup() {
 
   // MIDI Clock:
   quarterNoteTime = millis();
+
+  // @todo init faders at setup.
 }
 
 void loop() {
 
   serialData = Serial.read();
-  if (serialData == MIDI_START || serialData == MIDI_CONTINUE) {
+  if (serialData == MIDI_CONTINUE) {
     play_flag = 1;
-    displayPrintString("PLAY");
+  }
+  if (serialData == MIDI_START) {
+    play_flag = 1;
+    midiCLockTick = 0;
   }
   else if (serialData == MIDI_STOP) {
     play_flag = 0;
@@ -306,6 +340,7 @@ void loop() {
   readSwitches();
   updatePads();
 
+  // @todo afficher la valeur du fader 1 au démarrage.
   if (midiCCIsActive) {
     updateMidiControls();
   }
@@ -444,15 +479,13 @@ void updateVelocity(int globalMidiValue, int localMidiValue) {
 void updateNotes(int globalMidiOffset, int localMidiOffset) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushNote[selectedPushPin] = localMidiOffset;
-    if (pushNote[selectedPushPin] < 20) {
-      pushNote[selectedPushPin] = 20;
-    }
+    if (pushNote[selectedPushPin] < 0) { pushNote[selectedPushPin] = 0; }
     char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
     displayPrintChar(note);
   }
   else {
     globalNoteOffset = globalMidiOffset;
-    if (60+globalNoteOffset < 20) { globalNoteOffset = -39; }
+    if (60+globalNoteOffset < 0) { globalNoteOffset = -39; }
     if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
     char* note = getNoteFromMidiValue(60+globalNoteOffset);
     displayPrintChar(note);
@@ -486,54 +519,67 @@ void updatePads() {
       isPushed[p] = PUSHED;
       selectedPushPin = p;
 
-      playPush(p, 1);
+      if (play_flag == 0 || !noteRepeatIsActive) {
+        playPush(p, 1);
+      }
     }
     if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
-      playPush(p, 0);
+      if (play_flag == 0 || !noteRepeatIsActive) {
+        playPush(p, 0);
+      }
+    }
+  }
+}
+
+void playNotesRepeat() {
+
+  if (noteRepeatIsActive) {
+    for (int pin = 0; pin < NB_PUSH; pin++) {
+      int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
+      int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
+      int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
+
+      // @todo: use millis instead of ticks, only base tick at start.
+      if (midiCLockTick % ticksPerBeat == 0) {
+        if (isPushed[pin] == PUSHED) {
+          playPush(pin, 1);
+        }
+      }
+      if (midiCLockTick == ticksPerBeat+1) {
+        for (int pin = 0; pin < NB_PUSH; pin++) {
+          if (isPushed[pin] == RELEASED) {
+            playPush(pin, 0);
+          }
+        }
+      }
     }
   }
 }
 
 void MidiSync() {
-  midiCLockTick++;
-  if (noteRepeatIsActive) {
-    int currentRepeatSpeedDividend = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][0] : repeatSpeedDividend;
-    int currentRepeatSpeedDivisor = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][1] : repeatSpeedDivisor;
-    int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
-    if (midiCLockTick % ticksPerBeat == 0) {
-      for (int pin = 0; pin < NB_PUSH; pin++) {
-        if (isPushed[pin] == PUSHED) {
-          playPush(pin, 1);
-        }
-      }
-    }
-    if (midiCLockTick == ticksPerBeat+1) {
-      for (int pin = 0; pin < NB_PUSH; pin++) {
-        if (isPushed[pin] == RELEASED) {
-          playPush(pin, 0);
-        }
-      }
-    }
-  }
+
+  playNotesRepeat();
+
+  // Quarter note time:
   if (midiCLockTick % 24 == 0) {
+
+    // @todo: use millis instead of ticks, only base tick at start.
+
     // Tempo:
-    if (currentQuarter > 4) {
-      currentQuarter = 1;
-    }
-    if (currentQuarter == 1) {
+    int quarterNote = midiCLockTick / 24;
+    if (quarterNote % 4 == 0) {
       writeLeds(HIGH, LOW, LOW, LOW);
     }
-    if (currentQuarter == 2) {
+    if (quarterNote % 4 == 1) {
       writeLeds(HIGH, HIGH, LOW, LOW);
     }
-    if (currentQuarter == 3) {
+    if (quarterNote % 4 == 2) {
       writeLeds(HIGH, HIGH, HIGH, LOW);
     }
-    if (currentQuarter == 4) {
+    if (quarterNote % 4  == 3) {
       writeLeds(HIGH, HIGH, HIGH, HIGH);
     }
-    currentQuarter++;
 
     // BPM:
     quarterNoteTime = millis() - quarterNoteTime;
@@ -544,6 +590,8 @@ void MidiSync() {
     }
     quarterNoteTime = millis();
   }
+
+  midiCLockTick++;
 }
 
 void readSwitches() {
@@ -641,34 +689,42 @@ void updateMidiControls() {
 void updateNoteRepeatSpeed() {
   bool changed = false;
   int encoderValue = 0;
+  int tmpRepeatSpeedDividend = repeatSpeedDividend;
+  int tmpRepeatSpeedDivisor = repeatSpeedDivisor;
   encoderValue = readEncoder(0);
+  tmpRepeatSpeedDividend = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][0] : repeatSpeedDividend;
+  tmpRepeatSpeedDivisor = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][1] : repeatSpeedDivisor;
   if (encoderValue != encoderPos[0]) {
-    repeatSpeedDividend = repeatSpeedDividend + encoderValue - encoderPos[0];
-    if (repeatSpeedDividend > repeatSpeedDivisor) {
-      repeatSpeedDividend = repeatSpeedDivisor;
+    tmpRepeatSpeedDividend = tmpRepeatSpeedDividend + encoderValue - encoderPos[0];
+    if (tmpRepeatSpeedDividend > tmpRepeatSpeedDivisor) {
+      tmpRepeatSpeedDividend = tmpRepeatSpeedDivisor;
     }
-    if (repeatSpeedDividend < 1) { repeatSpeedDividend = 1; }
+    if (tmpRepeatSpeedDividend < 1) { tmpRepeatSpeedDividend = 1; }
     encoderPos[0] = encoderValue;
     changed = true;
   }
   encoderValue = readEncoder(1);
   if (encoderValue != encoderPos[1]) {
-    repeatSpeedDivisor = repeatSpeedDivisor + encoderValue - encoderPos[1];
-    if (repeatSpeedDivisor > 32) {
-      repeatSpeedDivisor = 32;
+    tmpRepeatSpeedDivisor = tmpRepeatSpeedDivisor + encoderValue - encoderPos[1];
+    if (tmpRepeatSpeedDivisor > 32) {
+      tmpRepeatSpeedDivisor = 32;
     }
-    if (repeatSpeedDivisor < 1) { repeatSpeedDivisor = 1; }
+    if (tmpRepeatSpeedDivisor < 1) { tmpRepeatSpeedDivisor = 1; }
     encoderPos[1] = encoderValue;
     changed = true;
   }
-  if (pushSettingsLocked[selectedPushPin]) {
-    pushRepeatSpeed[selectedPushPin][0] = repeatSpeedDividend;
-    pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
-  }
   if (changed) {
-    String dividend = repeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
+    if (pushSettingsLocked[selectedPushPin]) {
+      pushRepeatSpeed[selectedPushPin][0] = tmpRepeatSpeedDividend;
+      pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
+    }
+    else {
+      repeatSpeedDividend = tmpRepeatSpeedDividend;
+      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
+    }
+    String dividend = tmpRepeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
     display.clear();
-    display.print(dividend + String(repeatSpeedDivisor));
+    display.print(dividend + String(tmpRepeatSpeedDivisor));
     display.setColonOn(true);
   }
 }
