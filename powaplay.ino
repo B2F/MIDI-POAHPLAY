@@ -262,6 +262,7 @@ int repeatSpeedDividend = 1;
 int repeatSpeedDivisor = 4;
 int globalStartNote = 48;
 float oneNoteTime = 0;
+long int stopTime = 0;
 
 // Push buttons:
 
@@ -332,6 +333,7 @@ void loop() {
   serialData = Serial.read();
   if (serialData == MIDI_CONTINUE) {
     play_flag = 1;
+    startTime += millis() - stopTime;
   }
   if (serialData == MIDI_START) {
     play_flag = 1;
@@ -342,6 +344,7 @@ void loop() {
   }
   else if (serialData == MIDI_STOP) {
     play_flag = 0;
+    stopTime = millis();
   }
   else if (serialData == MIDI_SONG_POSITION_POINTER) {
     // @todo.
