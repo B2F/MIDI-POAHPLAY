@@ -56,6 +56,8 @@ int midiChannel = 2;
 int globalVelocity = 127;
 int globalNoteOffset = 0;
 int ticksPerNote = 96;
+unsigned long startTime = 0;
+long int nbElapsedNotes = 0;
 
 char* midiNote[128] = {
   " C0 ",
@@ -175,7 +177,7 @@ char* midiNote[128] = {
   " FH9",
   " G9 ",
   " GH9",
-  "A10",
+  "A10 ",
   "AH10",
   "b10 ",
   "C10 ",
@@ -247,7 +249,7 @@ bool padSettingsUnlockIsActive = false;
 #define MIDI_START 0xFA
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
-#define SONG_POSITION_POINTER 0xF2
+#define MIDI_SONG_POSITION_POINTER 0xF2
 int currentVelocity = globalVelocity;
 int play_flag = 0;
 int song_position_flag;
@@ -259,6 +261,7 @@ float noteRepeat;
 int repeatSpeedDividend = 1;
 int repeatSpeedDivisor = 4;
 int globalStartNote = 48;
+float oneNoteTime = 0;
 
 // Push buttons:
 
@@ -316,11 +319,15 @@ void setup() {
 
   // MIDI Clock:
   quarterNoteTime = millis();
+  oneNoteTime = getNoteMillis();
 
   // @todo init faders at setup.
+
 }
 
 void loop() {
+
+  long double loopTime = millis();
 
   serialData = Serial.read();
   if (serialData == MIDI_CONTINUE) {
@@ -328,13 +335,27 @@ void loop() {
   }
   if (serialData == MIDI_START) {
     play_flag = 1;
-    midiCLockTick = 0;
+    startTime = loopTime;
+    nbElapsedNotes = 0;
+    display.clear();
+    display.print("PLAY");
   }
   else if (serialData == MIDI_STOP) {
     play_flag = 0;
   }
-  else if ((serialData == MIDI_CLOCK) && (play_flag == 1)) {
+  else if (serialData == MIDI_SONG_POSITION_POINTER) {
+    // @todo.
+  }
+  else if (serialData == MIDI_CLOCK && play_flag == 1) {
+
     MidiSync();
+    updateLedsTempo();
+
+    if (loopTime > getNextNoteMillis()) {
+      nbElapsedNotes++;
+      display.clear();
+      display.println(nbElapsedNotes);
+    }
   }
 
   readSwitches();
@@ -534,63 +555,110 @@ void updatePads() {
 
 void playNotesRepeat() {
 
-  if (noteRepeatIsActive) {
-    for (int pin = 0; pin < NB_PUSH; pin++) {
-      int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
-      int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
-      int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
+  for (int pin = 0; pin < NB_PUSH; pin++) {
 
-      // @todo: use millis instead of ticks, only base tick at start.
+    int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
+    int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
+
+    int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
+
+    if (isPushed[pin] == RELEASED) {
+      playPush(pin, 0);
+    }
+
+    if (noteRepeatIsActive) {
       if (midiCLockTick % ticksPerBeat == 0) {
+        // @todo modulate pitch towards highs.
         if (isPushed[pin] == PUSHED) {
           playPush(pin, 1);
         }
       }
-      if (midiCLockTick == ticksPerBeat+1) {
-        for (int pin = 0; pin < NB_PUSH; pin++) {
-          if (isPushed[pin] == RELEASED) {
-            playPush(pin, 0);
-          }
-        }
+      else {
+        // double repeatTime = millis();
+        // if (lastNoteMillis + 2000 < repeatTime) {
+        //   repeatDelta += repeatTime - lastNoteMillis + 500;
+        //   display.clear();
+        //   if (isPushed[pin] == PUSHED) {
+        //     playPush(pin, 1);
+        //   }
+        //   if (repeatDelta > getNoteMillis()) {
+        //     repeatDelta = 0;
+        //   }
+        //   lastRepeatMillis = repeatTime;
+        // }
+        // if (repeatTime > (lastRepeatMillis + 500)) {
+        //   playPush(pin, 0);
+        // }
       }
     }
   }
 }
 
-void MidiSync() {
+void updateLedsTempo() {
 
-  playNotesRepeat();
+  long int nextNoteMillis = getNextNoteMillis();
+  long int loopTime = millis();
+
+  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 3/4))) {
+    writeLeds(HIGH, HIGH, HIGH, HIGH);
+  }
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 2/4))) {
+    writeLeds(HIGH, HIGH, HIGH, LOW);
+  }
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 1/4))) {
+    writeLeds(HIGH, HIGH, LOW, LOW);
+  }
+  else if (loopTime > (nextNoteMillis - oneNoteTime)) {
+    writeLeds(HIGH, LOW, LOW, LOW);
+  }
+
+}
+
+float getOneNoteFractionMillis(float fraction) {
+  return oneNoteTime * (1 - fraction);
+}
+
+long double getNextNoteMillis() {
+  return (long double) startTime + ((nbElapsedNotes + 1) * getNoteMillis());
+}
+
+double getNoteMillis() {
+  return getBeatMillis(4);
+}
+
+double getQuarterNoteMillis() {
+  return getBeatMillis(1);
+}
+
+double getBeatMillis(int nbBeats) {
+  return (1000 / ((float) bpm / 60)) * (float) nbBeats;
+}
+
+double getTickMillis() {
+  return (1000 / ((float) bpm / 60)) / 24;
+}
+
+void updateBpm() {
 
   // Quarter note time:
   if (midiCLockTick % 24 == 0) {
 
-    // @todo: use millis instead of ticks, only base tick at start.
-
-    // Tempo:
-    int quarterNote = midiCLockTick / 24;
-    if (quarterNote % 4 == 0) {
-      writeLeds(HIGH, LOW, LOW, LOW);
-    }
-    if (quarterNote % 4 == 1) {
-      writeLeds(HIGH, HIGH, LOW, LOW);
-    }
-    if (quarterNote % 4 == 2) {
-      writeLeds(HIGH, HIGH, HIGH, LOW);
-    }
-    if (quarterNote % 4  == 3) {
-      writeLeds(HIGH, HIGH, HIGH, HIGH);
-    }
-
     // BPM:
-    quarterNoteTime = millis() - quarterNoteTime;
+    long double bpmTime = millis();
+    quarterNoteTime = bpmTime - quarterNoteTime;
     long int newBpm = 60000/quarterNoteTime;
     if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
       displayPrintInt(bpm);
+      oneNoteTime = getNoteMillis();
+      startTime = startTime * (bpm / newBpm);
     }
-    quarterNoteTime = millis();
+    quarterNoteTime = bpmTime;
   }
+}
 
+void MidiSync() {
+  updateBpm();
   midiCLockTick++;
 }
 
