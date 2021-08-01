@@ -501,7 +501,7 @@ char* getNoteFromMidiValue(uint8_t midiValue) {
   return midiNote[midiValue];
 }
 
-uint16_t readFader(uint16_t f) {
+uint16_t readFader(uint8_t f) {
   uint16_t faderValue = analogRead(faderPin[f]);
   if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
     if (faderValue >= MAX_FADER_VALUE) {
@@ -715,7 +715,7 @@ void readSwitches() {
 
 void updateMidiControls() {
 
-  uint8_t faderValue = 127;
+  uint16_t faderValue = 127;
   int encoderValue = 0;
 
   if (!ultrasonicSensorIsActive) {
