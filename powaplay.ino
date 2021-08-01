@@ -10,7 +10,6 @@
 #include <light_CD74HC4067.h>
 #include <HCSR04.h>
 
-byte serialData;
 const unsigned long BAUD_RATE = 57600;
 
 // Encoders:
@@ -54,7 +53,7 @@ byte midiCC1Value = 63;
 byte midiCC2Value = 63;
 byte midiChannel = 2;
 byte globalVelocity = 127;
-byte globalNoteOffset = 0;
+int globalNoteOffset = 0;
 byte ticksPerNote = 96;
 unsigned long startTime = 0;
 long nbElapsedNotes = 0;
@@ -252,7 +251,7 @@ bool padSettingsUnlockIsActive = false;
 #define MIDI_CONTINUE 0xFB
 #define MIDI_SONG_POSITION_POINTER 0xF2
 uint8_t currentVelocity = globalVelocity;
-bool play_flag = false;
+bool playFlag = false;
 unsigned long midiCLockTick = 0;
 unsigned long quarterNoteTime = 0;
 uint8_t bpm = 120;
@@ -330,36 +329,7 @@ void loop() {
 
   unsigned long loopTime = millis();
 
-  serialData = Serial.read();
-  if (serialData == MIDI_CONTINUE) {
-    play_flag = true;
-    startTime += millis() - stopTime;
-  }
-  if (serialData == MIDI_START) {
-    play_flag = true;
-    startTime = loopTime - MIDI_START_OFFSET;
-    nbElapsedNotes = 0;
-    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
-      pushElapsedRepeats[pin] = 0;
-    }
-    display.clear();
-    display.print("PLAY");
-  }
-  else if (serialData == MIDI_STOP) {
-    play_flag = false;
-    stopTime = millis();
-  }
-  else if (serialData == MIDI_SONG_POSITION_POINTER) {
-    // @todo.
-  }
-  else if (serialData == MIDI_CLOCK && play_flag) {
-
-    MidiSync();
-
-    if (loopTime > getNextNoteMillis()) {
-      nbElapsedNotes++;
-    }
-
+  if (updateMidiSerial()) {
     updateLedsTempo();
     playNotesRepeat();
   }
@@ -418,6 +388,54 @@ void loop() {
   // Serial.println(distance);
 }
 
+bool updateMidiSerial() {
+
+  if (Serial.available()){
+    return false;
+  }
+
+  unsigned long loopTime = millis();
+
+  byte serialByte = Serial.read();
+
+  if (serialByte == MIDI_CONTINUE) {
+    playFlag = true;
+    startTime += millis() - stopTime;
+    return true;
+  }
+  if (serialByte == MIDI_START) {
+    playFlag = true;
+    startTime = loopTime - MIDI_START_OFFSET;
+    nbElapsedNotes = 0;
+    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
+      pushElapsedRepeats[pin] = 0;
+    }
+    display.clear();
+    display.print("PLAY");
+    return true;
+  }
+  else if (serialByte == MIDI_STOP) {
+    playFlag = false;
+    stopTime = millis();
+  }
+  else if (serialByte == MIDI_SONG_POSITION_POINTER) {
+    // @todo.
+    byte serialData = Serial.read();
+  }
+  else if (serialByte == MIDI_CLOCK && playFlag) {
+
+    MidiSync();
+
+    if (loopTime > getNextNoteMillis()) {
+      nbElapsedNotes++;
+    }
+    return true;
+  }
+  else {
+    return false;
+  }
+}
+
 void writeLeds(uint8_t s1, uint8_t s2, uint8_t s3, uint8_t s4) {
   uint8_t ledPin[4] = {L1, L2, L3, L4};
   uint8_t states[4] = {s1, s2, s3, s4};
@@ -455,6 +473,15 @@ uint8_t getMidiValueFromFader(uint16_t faderValue) {
   return 127 - (faderValue * 127 / 1024);
 }
 
+float getPitchModulationFromfader(uint16_t faderValue) {
+  if (faderValue > 512) {
+    return (float) (faderValue - 512) / 512;
+  }
+  else {
+    return (float) faderValue / 512 * -1;
+  }
+}
+
 uint8_t getMidiValueFromEncoder(uint8_t currentMidiValue, int position, int previousPosition) {
   int delta = position - previousPosition;
   int newMidiValue = currentMidiValue + delta;
@@ -474,6 +501,12 @@ char* getNoteFromMidiValue(uint8_t midiValue) {
 uint16_t readFader(uint16_t f) {
   uint16_t faderValue = analogRead(faderPin[f]);
   if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
+    if (faderValue >= MAX_FADER_VALUE) {
+      return 1024;
+    }
+    else if (faderValue <= MIN_FADER_VALUE) {
+      return 0;
+    }
     return faderValue;
   }
   else {
@@ -512,8 +545,8 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
   }
   else {
     globalNoteOffset = globalMidiOffset;
-    if (60+globalNoteOffset < 0) { globalNoteOffset = -39; }
-    if (60+globalNoteOffset > 119) { globalNoteOffset = 59; }
+    if (60+globalNoteOffset < 0) { globalNoteOffset = -60; }
+    if (60+globalNoteOffset > 127) { globalNoteOffset = 67; }
     char* note = getNoteFromMidiValue(60+globalNoteOffset);
     displayPrintChar(note);
   }
@@ -546,7 +579,7 @@ void updatePads() {
       isPushed[p] = PUSHED;
       selectedPushPin = p;
 
-      if (play_flag == false || !noteRepeatIsActive) {
+      if (playFlag == false || !noteRepeatIsActive) {
         playPush(p, 1);
       }
       // @todo else start playback
@@ -803,4 +836,11 @@ void displayPrintChar(char* c) {
   display.setColonOn(false);
   display.clear();
   display.print(c);
+}
+
+
+void displayPrintFloat(float f) {
+  display.setColonOn(false);
+  display.clear();
+  display.print(f);
 }
