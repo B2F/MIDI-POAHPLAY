@@ -11,18 +11,18 @@
 #include <HCSR04.h>
 
 byte serialData;
-const long BAUD_RATE = 57600;
+const unsigned long BAUD_RATE = 57600;
 
 // Encoders:
 
-const int NB_ENCODERS = 2;
+const uint8_t NB_ENCODERS = 2;
 
-const int P1CLK = 2;
-const int P1DT = 4;
-const int P1SW = 15;
-const int P2CLK = 3;
-const int P2DT = 5;
-const int P2SW = 14;
+const uint8_t P1CLK = 2;
+const uint8_t P1DT = 4;
+const uint8_t P1SW = 15;
+const uint8_t P2CLK = 3;
+const uint8_t P2DT = 5;
+const uint8_t P2SW = 14;
 
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
@@ -31,11 +31,11 @@ Encoder encoder[NB_ENCODERS] = {P1, P2};
 int encoderPos[NB_ENCODERS] = {0, 0};
 int encoderState[NB_ENCODERS] = {1, 1};
 
-const int ENCODER_STEP = 4;
+const uint8_t ENCODER_STEP = 4;
 
 // Multiplexer
 
-const int MUXSIG = A0;
+const uint8_t MUXSIG = A0;
 CD74HC4067 mux(A1, A2, A3, A4);
 
 // MIDI
@@ -48,17 +48,17 @@ struct HairlessMidiSettings : public midi::DefaultSettings
 
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
-int midiCC1 = 0;
-int midiCC2 = 0;
-int midiCC1Value = 63;
-int midiCC2Value = 63;
-int midiChannel = 2;
-int globalVelocity = 127;
-int globalNoteOffset = 0;
-int ticksPerNote = 96;
+byte midiCC1 = 0;
+byte midiCC2 = 0;
+byte midiCC1Value = 63;
+byte midiCC2Value = 63;
+byte midiChannel = 2;
+byte globalVelocity = 127;
+byte globalNoteOffset = 0;
+byte ticksPerNote = 96;
 unsigned long startTime = 0;
-long int nbElapsedNotes = 0;
-const int MIDI_START_OFFSET = 300;
+long nbElapsedNotes = 0;
+const int MIDI_START_OFFSET = 0;
 
 char* midiNote[128] = {
   " C0 ",
@@ -193,46 +193,46 @@ char* midiNote[128] = {
 
 // LCD
 
-const int LCD_CLK = 12;
-const int LCD_DIO = 11;
+const uint8_t LCD_CLK = 12;
+const uint8_t LCD_DIO = 11;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Faders:
 
-const int F1 = A6;
-const int F2 = A7;
+const uint8_t F1 = A6;
+const uint8_t F2 = A7;
 
-int faderPin[2] = {F1, F2};
+uint8_t faderPin[2] = {F1, F2};
 int faderPos[2] = {0, 0};
 
-const int MAX_FADER_VALUE = 970;
-const int MIN_FADER_VALUE = 50;
-const int FADER_THRESHOLD = 30;
+const uint16_t MAX_FADER_VALUE = 970;
+const uint16_t MIN_FADER_VALUE = 50;
+const uint16_t FADER_THRESHOLD = 30;
 
 // Leds:
 
-const int L1 = 10;
-const int L2 = 9;
-const int L3 = 8;
-const int L4 = 7;
+const uint8_t L1 = 10;
+const uint8_t L2 = 9;
+const uint8_t L3 = 8;
+const uint8_t L4 = 7;
 
 // Ultrasonic
 
-const int triggerPin = 13;
-const int echoPin = 6;
+const uint8_t triggerPin = 13;
+const uint8_t echoPin = 6;
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
 // Magnet
 
-const int MAGNET = A5;
+const uint8_t MAGNET = A5;
 
 // Switches
 
-const int SW1 = 0;
-const int SW2 = 1;
-const int SW3 = 10;
-const int SW4 = 13;
+const uint8_t SW1 = 0;
+const uint8_t SW2 = 1;
+const uint8_t SW3 = 10;
+const uint8_t SW4 = 13;
 
 // @todo: ajouter un bouton reset qui peut aussi servir a verrouiller un note repeat.
 
@@ -251,35 +251,32 @@ bool padSettingsUnlockIsActive = false;
 #define MIDI_STOP 0xFC
 #define MIDI_CONTINUE 0xFB
 #define MIDI_SONG_POSITION_POINTER 0xF2
-int currentVelocity = globalVelocity;
-int play_flag = 0;
-int song_position_flag;
-long int song_position = -1;
-long int midiCLockTick = 0;
-long int quarterNoteTime = 0;
-int bpm = 120;
-float noteRepeat;
-int repeatSpeedDividend = 1;
-int repeatSpeedDivisor = 4;
-int globalStartNote = 48;
-float oneNoteTime = 0;
-long int stopTime = 0;
+uint8_t currentVelocity = globalVelocity;
+bool play_flag = false;
+unsigned long midiCLockTick = 0;
+unsigned long quarterNoteTime = 0;
+uint8_t bpm = 120;
+uint8_t repeatSpeedDividend = 1;
+uint8_t repeatSpeedDivisor = 4;
+uint8_t globalStartNote = 48;
+uint16_t oneNoteTime = 0;
+unsigned long stopTime = 0;
 
 // Push buttons:
 
-const int PUSHED = LOW;
-const int RELEASED = HIGH;
-const int NB_PUSH = 8;
+const byte PUSHED = LOW;
+const byte RELEASED = HIGH;
+const uint8_t NB_PUSH = 8;
 
-int pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
+uint8_t pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 // @todo Dynamic getPushNote setting relative to global if 0 and locked.
-int pushNote[NB_PUSH];
-int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
-int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
-int pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+byte pushNote[NB_PUSH];
+byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
+bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
+byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
 // Nb elapsed repeats timeframes (not necessarily used) since last start time:
-int pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
-int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
+unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
+byte isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 int selectedPushPin = -1;
 
 void setup() {
@@ -287,7 +284,7 @@ void setup() {
   Serial.begin(BAUD_RATE);
 
   // Push
-  for (int pad = 0; pad < NB_PUSH; pad++) {
+  for (uint8_t pad = 0; pad < NB_PUSH; pad++) {
     pushNote[pad] = globalStartNote+pad;
   }
 
@@ -331,31 +328,31 @@ void setup() {
 
 void loop() {
 
-  long double loopTime = millis();
+  unsigned long loopTime = millis();
 
   serialData = Serial.read();
   if (serialData == MIDI_CONTINUE) {
-    play_flag = 1;
+    play_flag = true;
     startTime += millis() - stopTime;
   }
   if (serialData == MIDI_START) {
-    play_flag = 1;
+    play_flag = true;
     startTime = loopTime - MIDI_START_OFFSET;
     nbElapsedNotes = 0;
-    for (int pin = 0; pin < NB_PUSH; pin++) {
+    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
       pushElapsedRepeats[pin] = 0;
     }
     display.clear();
     display.print("PLAY");
   }
   else if (serialData == MIDI_STOP) {
-    play_flag = 0;
+    play_flag = false;
     stopTime = millis();
   }
   else if (serialData == MIDI_SONG_POSITION_POINTER) {
     // @todo.
   }
-  else if (serialData == MIDI_CLOCK && play_flag == 1) {
+  else if (serialData == MIDI_CLOCK && play_flag) {
 
     MidiSync();
 
@@ -376,19 +373,19 @@ void loop() {
   }
   else {
 
-    int encoderValue = 127;
-    int faderValue = 0;
+    uint8_t encoderValue = 127;
+    uint16_t faderValue = 0;
 
     faderValue = readFader(0);
     if (faderValue != faderPos[0]) {
       faderPos[0] = faderValue;
-      int newMidiValue = getMidiValueFromFader(faderPos[0]);
+      uint8_t newMidiValue = getMidiValueFromFader(faderPos[0]);
       updateVelocity(newMidiValue, newMidiValue);
     }
 
     faderValue = readFader(1);
     if (faderValue != faderPos[1]) {
-      int newMidiValue = getMidiValueFromFader(faderPos[1]);
+      uint8_t newMidiValue = getMidiValueFromFader(faderPos[1]);
       MIDI.sendPitchBend(newMidiValue, midiChannel);
       displayPrintInt(newMidiValue);
       faderPos[1] = faderValue;
@@ -421,17 +418,17 @@ void loop() {
   // Serial.println(distance);
 }
 
-void writeLeds(int s1, int s2, int s3, int s4) {
-  int ledPin[4] = {L1, L2, L3, L4};
-  int states[4] = {s1, s2, s3, s4};
-  for (int i = 0; i < 4; i++) {
+void writeLeds(uint8_t s1, uint8_t s2, uint8_t s3, uint8_t s4) {
+  uint8_t ledPin[4] = {L1, L2, L3, L4};
+  uint8_t states[4] = {s1, s2, s3, s4};
+  for (uint8_t i = 0; i < 4; i++) {
     digitalWrite(ledPin[i], states[i]);
   }
 }
 
-void playPush(int pin, bool state) {
-  int currentVelocity = pushVelocity[pin];
-  int currentNote = pushNote[pin];
+void playPush(uint8_t pin, bool state) {
+  uint8_t currentVelocity = pushVelocity[pin];
+  uint8_t currentNote = pushNote[pin];
   if (!pushSettingsLocked[pin]) {
     currentVelocity = globalVelocity;
     currentNote += globalNoteOffset;
@@ -448,7 +445,7 @@ void playPush(int pin, bool state) {
   }
 }
 
-long int getMidiValueFromFader(long int faderValue) {
+uint8_t getMidiValueFromFader(uint16_t faderValue) {
   if (faderValue >= MAX_FADER_VALUE) {
     faderValue = 1024;
   }
@@ -458,7 +455,7 @@ long int getMidiValueFromFader(long int faderValue) {
   return 127 - (faderValue * 127 / 1024);
 }
 
-long int getMidiValueFromEncoder(int currentMidiValue, int position, int previousPosition) {
+uint8_t getMidiValueFromEncoder(uint8_t currentMidiValue, int position, int previousPosition) {
   int delta = position - previousPosition;
   int newMidiValue = currentMidiValue + delta;
   if (newMidiValue >= 127) {
@@ -470,12 +467,12 @@ long int getMidiValueFromEncoder(int currentMidiValue, int position, int previou
   return newMidiValue;
 }
 
-char* getNoteFromMidiValue(int midiValue) {
+char* getNoteFromMidiValue(uint8_t midiValue) {
   return midiNote[midiValue];
 }
 
-int readFader(int f) {
-  int faderValue = analogRead(faderPin[f]);
+uint16_t readFader(uint16_t f) {
+  uint16_t faderValue = analogRead(faderPin[f]);
   if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
     return faderValue;
   }
@@ -484,7 +481,7 @@ int readFader(int f) {
   }
 }
 
-int readEncoder(int e) {
+int readEncoder(uint8_t e) {
   int position = encoder[e].read();
   if (position != 0 && encoderPos[e] != position) {
     return position;
@@ -494,7 +491,7 @@ int readEncoder(int e) {
   }
 }
 
-void updateVelocity(int globalMidiValue, int localMidiValue) {
+void updateVelocity(uint8_t globalMidiValue, uint8_t localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
     displayPrintInt(localMidiValue);
@@ -524,10 +521,10 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
 
 void updatePads() {
 
-  for (int p = 0; p < NB_PUSH; p++) {
+  for (uint8_t p = 0; p < NB_PUSH; p++) {
 
     mux.channel(pushPin[p]);
-    int sensorVal = digitalRead(MUXSIG);
+    uint8_t sensorVal = digitalRead(MUXSIG);
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
 
@@ -549,12 +546,12 @@ void updatePads() {
       isPushed[p] = PUSHED;
       selectedPushPin = p;
 
-      if (play_flag == 0 || !noteRepeatIsActive) {
+      if (play_flag == false || !noteRepeatIsActive) {
         playPush(p, 1);
       }
       // @todo else start playback
     }
-    if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
+    else if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
       playPush(p, 0);
     }
@@ -562,42 +559,36 @@ void updatePads() {
 }
 
 void playNotesRepeat() {
-
-  for (int pin = 0; pin < NB_PUSH; pin++) {
-
-    if (noteRepeatIsActive) {
-      Serial.println(getNextRepeatMillis(pin));
-      if (millis() > getNextRepeatMillis(pin)) {
-        if (isPushed[pin] == PUSHED) {
-          playPush(pin, 1);
-        }
+  for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
+    unsigned long nextCap = getNextRepeatMillis(pin);
+    if (millis() > nextCap) {
+      pushElapsedRepeats[pin]++;
+      if (isPushed[pin] == PUSHED) {
+        playPush(pin, 1);
       }
     }
   }
 }
 
-float getPushPinFraction(int pin) {
-  int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
-  int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
+float getPushPinFraction(uint8_t pin) {
+  uint8_t currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
+  uint8_t currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
   return (float) currentRepeatSpeedDividend / (float) currentRepeatSpeedDivisor;
 } 
 
 void updateLedsTempo() {
 
-  long int nextNoteMillis = getNextNoteMillis();
-  long int loopTime = millis();
+  unsigned long nextNoteMillis = getNextNoteMillis();
+  unsigned long loopTime = millis();
 
   // @todo flash oxxx then oooo if no SPP found.
-  float thirdBeatTime = 1 - (float) 3/4;
-  float secondBeatTime = 1 - (float) 2/4;
-  float firstBeatTime = 1 - (float) 1/4;
-  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(thirdBeatTime))) {
+  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.25))) {
     writeLeds(HIGH, HIGH, HIGH, HIGH);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(secondBeatTime))) {
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.5))) {
     writeLeds(HIGH, HIGH, HIGH, LOW);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(firstBeatTime))) {
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.75))) {
     writeLeds(HIGH, HIGH, LOW, LOW);
   }
   else if (loopTime > (nextNoteMillis - oneNoteTime)) {
@@ -606,36 +597,26 @@ void updateLedsTempo() {
 
 }
 
-float getOneNoteFractionMillis(float fraction) {
+uint16_t getOneNoteFractionMillis(float fraction) {
   return oneNoteTime * fraction;
 }
 
-long double getNextNoteMillis() {
-  return (long double) startTime + ((nbElapsedNotes + 1) * getNoteMillis());
+unsigned long getNextNoteMillis() {
+  return startTime + ((nbElapsedNotes + 1) * oneNoteTime);
 }
 
-long double getNextRepeatMillis(int pin) {
+unsigned long getNextRepeatMillis(int pin) {
   float pinRepeatSpeed = getPushPinFraction(pin);
-  float oneNoteFractionMillis = getOneNoteFractionMillis(pinRepeatSpeed);
-  Serial.println(pinRepeatSpeed);
-  Serial.println(oneNoteFractionMillis);
-  return startTime + (pushElapsedRepeats[pin] * 250) + 250;
+  uint16_t oneNoteFractionMillis = getOneNoteFractionMillis(pinRepeatSpeed);
+  return startTime + (pushElapsedRepeats[pin] * oneNoteFractionMillis) + oneNoteFractionMillis;
 }
 
-double getNoteMillis() {
+uint16_t getNoteMillis() {
   return getBeatMillis(4);
 }
 
-double getQuarterNoteMillis() {
-  return getBeatMillis(1);
-}
-
-double getBeatMillis(int nbBeats) {
+uint16_t getBeatMillis(int nbBeats) {
   return (1000 / ((float) bpm / 60)) * (float) nbBeats;
-}
-
-double getTickMillis() {
-  return (1000 / ((float) bpm / 60)) / 24;
 }
 
 void updateBpm() {
@@ -644,9 +625,9 @@ void updateBpm() {
   if (midiCLockTick % 24 == 0) {
 
     // BPM:
-    long double bpmTime = millis();
+    unsigned long bpmTime = millis();
     quarterNoteTime = bpmTime - quarterNoteTime;
-    long int newBpm = 60000/quarterNoteTime;
+    unsigned long newBpm = 60000/quarterNoteTime;
     if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
       displayPrintInt(bpm);
@@ -695,7 +676,7 @@ void readSwitches() {
 
 void updateMidiControls() {
 
-  int faderValue = 127;
+  uint8_t faderValue = 127;
   int encoderValue = 0;
 
   if (!ultrasonicSensorIsActive) {
@@ -757,8 +738,8 @@ void updateMidiControls() {
 void updateNoteRepeatSpeed() {
   bool changed = false;
   int encoderValue = 0;
-  int tmpRepeatSpeedDividend = repeatSpeedDividend;
-  int tmpRepeatSpeedDivisor = repeatSpeedDivisor;
+  uint8_t tmpRepeatSpeedDividend = repeatSpeedDividend;
+  uint8_t tmpRepeatSpeedDivisor = repeatSpeedDivisor;
   encoderValue = readEncoder(0);
   tmpRepeatSpeedDividend = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][0] : repeatSpeedDividend;
   tmpRepeatSpeedDivisor = pushSettingsLocked[selectedPushPin] ? pushRepeatSpeed[selectedPushPin][1] : repeatSpeedDivisor;
