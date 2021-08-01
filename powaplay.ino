@@ -559,6 +559,9 @@ void updatePads() {
 }
 
 void playNotesRepeat() {
+  if (!noteRepeatIsActive) {
+    return;
+  }
   for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
     unsigned long nextCap = getNextRepeatMillis(pin);
     if (millis() > nextCap) {
