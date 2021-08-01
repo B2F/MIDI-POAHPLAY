@@ -333,6 +333,9 @@ void loop() {
     updateLedsTempo();
     playNotesRepeat();
   }
+  else if (noteRepeatIsActive) {
+    playNotesRepeat();
+  }
 
   readSwitches();
   updatePads();
