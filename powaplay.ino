@@ -58,6 +58,7 @@ int globalNoteOffset = 0;
 int ticksPerNote = 96;
 unsigned long startTime = 0;
 long int nbElapsedNotes = 0;
+const int MIDI_START_OFFSET = 300;
 
 char* midiNote[128] = {
   " C0 ",
@@ -276,6 +277,8 @@ int pushNote[NB_PUSH];
 int pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 int pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+// Nb elapsed repeats timeframes (not necessarily used) since last start time:
+int pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
 int isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 int selectedPushPin = -1;
 
@@ -337,8 +340,11 @@ void loop() {
   }
   if (serialData == MIDI_START) {
     play_flag = 1;
-    startTime = loopTime;
+    startTime = loopTime - MIDI_START_OFFSET;
     nbElapsedNotes = 0;
+    for (int pin = 0; pin < NB_PUSH; pin++) {
+      pushElapsedRepeats[pin] = 0;
+    }
     display.clear();
     display.print("PLAY");
   }
@@ -352,13 +358,13 @@ void loop() {
   else if (serialData == MIDI_CLOCK && play_flag == 1) {
 
     MidiSync();
-    updateLedsTempo();
 
     if (loopTime > getNextNoteMillis()) {
       nbElapsedNotes++;
-      display.clear();
-      display.println(nbElapsedNotes);
     }
+
+    updateLedsTempo();
+    playNotesRepeat();
   }
 
   readSwitches();
@@ -546,12 +552,11 @@ void updatePads() {
       if (play_flag == 0 || !noteRepeatIsActive) {
         playPush(p, 1);
       }
+      // @todo else start playback
     }
     if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
-      if (play_flag == 0 || !noteRepeatIsActive) {
-        playPush(p, 0);
-      }
+      playPush(p, 0);
     }
   }
 }
@@ -560,55 +565,39 @@ void playNotesRepeat() {
 
   for (int pin = 0; pin < NB_PUSH; pin++) {
 
-    int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
-    int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
-
-    int ticksPerBeat = ticksPerNote * currentRepeatSpeedDividend / currentRepeatSpeedDivisor;
-
-    if (isPushed[pin] == RELEASED) {
-      playPush(pin, 0);
-    }
-
     if (noteRepeatIsActive) {
-      if (midiCLockTick % ticksPerBeat == 0) {
-        // @todo modulate pitch towards highs.
+      Serial.println(getNextRepeatMillis(pin));
+      if (millis() > getNextRepeatMillis(pin)) {
         if (isPushed[pin] == PUSHED) {
           playPush(pin, 1);
         }
       }
-      else {
-        // double repeatTime = millis();
-        // if (lastNoteMillis + 2000 < repeatTime) {
-        //   repeatDelta += repeatTime - lastNoteMillis + 500;
-        //   display.clear();
-        //   if (isPushed[pin] == PUSHED) {
-        //     playPush(pin, 1);
-        //   }
-        //   if (repeatDelta > getNoteMillis()) {
-        //     repeatDelta = 0;
-        //   }
-        //   lastRepeatMillis = repeatTime;
-        // }
-        // if (repeatTime > (lastRepeatMillis + 500)) {
-        //   playPush(pin, 0);
-        // }
-      }
     }
   }
 }
+
+float getPushPinFraction(int pin) {
+  int currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
+  int currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
+  return (float) currentRepeatSpeedDividend / (float) currentRepeatSpeedDivisor;
+} 
 
 void updateLedsTempo() {
 
   long int nextNoteMillis = getNextNoteMillis();
   long int loopTime = millis();
 
-  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 3/4))) {
+  // @todo flash oxxx then oooo if no SPP found.
+  float thirdBeatTime = 1 - (float) 3/4;
+  float secondBeatTime = 1 - (float) 2/4;
+  float firstBeatTime = 1 - (float) 1/4;
+  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(thirdBeatTime))) {
     writeLeds(HIGH, HIGH, HIGH, HIGH);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 2/4))) {
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(secondBeatTime))) {
     writeLeds(HIGH, HIGH, HIGH, LOW);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis((float) 1/4))) {
+  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(firstBeatTime))) {
     writeLeds(HIGH, HIGH, LOW, LOW);
   }
   else if (loopTime > (nextNoteMillis - oneNoteTime)) {
@@ -618,11 +607,19 @@ void updateLedsTempo() {
 }
 
 float getOneNoteFractionMillis(float fraction) {
-  return oneNoteTime * (1 - fraction);
+  return oneNoteTime * fraction;
 }
 
 long double getNextNoteMillis() {
   return (long double) startTime + ((nbElapsedNotes + 1) * getNoteMillis());
+}
+
+long double getNextRepeatMillis(int pin) {
+  float pinRepeatSpeed = getPushPinFraction(pin);
+  float oneNoteFractionMillis = getOneNoteFractionMillis(pinRepeatSpeed);
+  Serial.println(pinRepeatSpeed);
+  Serial.println(oneNoteFractionMillis);
+  return startTime + (pushElapsedRepeats[pin] * 250) + 250;
 }
 
 double getNoteMillis() {
@@ -785,6 +782,7 @@ void updateNoteRepeatSpeed() {
     changed = true;
   }
   if (changed) {
+
     if (pushSettingsLocked[selectedPushPin]) {
       pushRepeatSpeed[selectedPushPin][0] = tmpRepeatSpeedDividend;
       pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
@@ -793,6 +791,11 @@ void updateNoteRepeatSpeed() {
       repeatSpeedDividend = tmpRepeatSpeedDividend;
       repeatSpeedDivisor = tmpRepeatSpeedDivisor;
     }
+
+    float newSpeedFraction = (float) tmpRepeatSpeedDividend / (float) tmpRepeatSpeedDivisor;
+    unsigned long relativeStartTime = millis() - startTime;
+    pushElapsedRepeats[selectedPushPin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMillis(newSpeedFraction)) + 1;
+
     String dividend = tmpRepeatSpeedDividend >= 10 ? String(repeatSpeedDividend) : " " + String(repeatSpeedDividend);
     display.clear();
     display.print(dividend + String(tmpRepeatSpeedDivisor));
