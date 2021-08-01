@@ -231,7 +231,7 @@ const uint8_t MAGNET = A5;
 const uint8_t SW1 = 0;
 const uint8_t SW2 = 1;
 const uint8_t SW3 = 10;
-const uint8_t SW4 = 13;
+const uint8_t SW4 = 11;
 
 // @todo: ajouter un bouton reset qui peut aussi servir a verrouiller un note repeat.
 
@@ -242,6 +242,7 @@ bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 bool padSettingsLockIsActive = false;
 bool padSettingsUnlockIsActive = false;
+bool playButtonPressed = false;
 
 // MIDI
 
@@ -282,6 +283,8 @@ void setup() {
 
   Serial.begin(BAUD_RATE);
 
+  readSwitches();
+
   // Push
   for (uint8_t pad = 0; pad < NB_PUSH; pad++) {
     pushNote[pad] = globalStartNote+pad;
@@ -289,11 +292,13 @@ void setup() {
 
   // LCD:
   display.begin();
-  display.print("P0AH");
-  delay(1000);
-  display.blink();
-  display.print("P0AH PLAY");
-  display.snake(2, 70);
+  if (!playButtonPressed) {
+    display.print("P0AH");
+    delay(1000);
+    display.blink();
+    display.print("P0AH PLAY");
+    display.snake(2, 70);
+  }
 
   // Encoders:
   pinMode(P1CLK, INPUT);
@@ -696,6 +701,9 @@ void readSwitches() {
   mux.channel(SW3);
   ultrasonicSensorIsActive = digitalRead(MUXSIG);
 
+  mux.channel(SW4);
+  playButtonPressed = digitalRead(MUXSIG) == PUSHED ? true : false;
+
   mux.channel(P1SW);
   if (digitalRead(MUXSIG) == PUSHED) {
     padSettingsLockIsActive = true;
@@ -703,12 +711,7 @@ void readSwitches() {
   }
   else {
     mux.channel(P2SW);
-    if (digitalRead(MUXSIG) == PUSHED) {
-      padSettingsUnlockIsActive = true;
-    }
-    else if (digitalRead(MUXSIG) == RELEASED) {
-      padSettingsUnlockIsActive = false;
-    }
+    padSettingsUnlockIsActive = digitalRead(MUXSIG) == PUSHED ? true : false;
     padSettingsLockIsActive = false;
   }
 }
