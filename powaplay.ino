@@ -434,32 +434,32 @@ void loop() {
 
 void updateDefaultGlobalSettings() {
   encoderValue = readEncoder(0);
-  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
-    uint8_t newMidiChannel = getMidiValueFromEncoder(midiChannel, encoderValue, encoderPos[1]);
-    newMidiChannel = newMidiChannel = 17 ? 17 : newMidiChannel;
-    displayPrintString("CH" + String(newMidiChannel));
-    encoderPos[0] = newMidiChannel;
+  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
+    int newMidiChannel = getMidiValueFromEncoder(midiChannel, encoderValue, encoderPos[0]);
+    midiChannel = newMidiChannel > 16 ? 17 : newMidiChannel;
+    displayPrintString("CH" + String(midiChannel));
+    encoderPos[0] = encoderValue;
   }
   encoderValue = readEncoder(1);
-  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
-    uint8_t newProgram = getMidiValueFromEncoder(programChange, encoderValue, encoderPos[0]);
-    MIDI.sendProgramChange(newProgram, midiChannel);
-    displayPrintString("P" + String(newProgram));
-    encoderPos[1] = newProgram;
+  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
+    programChange = getMidiValueFromEncoder(programChange, encoderValue, encoderPos[1]);
+    MIDI.sendProgramChange(programChange, midiChannel);
+    displayPrintString("P" + String(programChange));
+    encoderPos[1] = encoderValue;
   }
 }
 
 void updateVelocityAndNotes() {
 
   faderValue = readFader(0);
-  if (faderValue != faderPos[0]) {
+  if (faderValue != faderPos[0] && rightPush == RELEASED) {
     faderPos[0] = faderValue;
     uint8_t newMidiValue = getMidiValueFromFader(faderPos[0]);
     updateVelocity(newMidiValue, newMidiValue);
   }
 
   faderValue = readFader(1);
-  if (faderValue != faderPos[1]) {
+  if (faderValue != faderPos[1] && leftPush == RELEASED) {
     // float pitchBend = getPitchModulationFromfader(faderValue);
     // MIDI.sendPitchBend(0.5f, midiChannel);
     // displayPrintFloat(pitchBend);
@@ -587,7 +587,7 @@ float getPitchModulationFromfader(uint16_t faderValue) {
   }
 }
 
-uint8_t getMidiValueFromEncoder(uint8_t currentMidiValue, int position, int previousPosition) {
+int getMidiValueFromEncoder(uint8_t currentMidiValue, int position, int previousPosition) {
   int delta = position - previousPosition;
   int newMidiValue = currentMidiValue + delta;
   if (newMidiValue >= 127) {
@@ -936,12 +936,12 @@ void updateUltrasonicSettings() {
   if (leftPush == PUSHED && encoderValue != encoderPos[0]) {
     ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderValue, encoderPos[0]);
     displayPrintString("u" + maxUltrasonicDistanceCm);
-    encoderPos[1] = ultrasonicCC;
+    encoderPos[0] = encoderValue;
   }
   else if (rightPush == PUSHED && encoderValue != encoderPos[1]) {
     maxUltrasonicDistanceCm = maxUltrasonicDistanceCm - encoderValue;
     displayPrintString("d" + maxUltrasonicDistanceCm);
-    encoderPos[1] = maxUltrasonicDistanceCm;
+    encoderPos[1] = encoderValue;
   }
   uint8_t distance = distanceSensor.measureDistanceCm();
   distance = distance > maxUltrasonicDistanceCm ? maxUltrasonicDistanceCm : distance;
