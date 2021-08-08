@@ -394,7 +394,6 @@ void loop() {
 
   // Maj des réglages de niveau 2 (symetric encoder push):
   if (checkMode(REPEAT_MASK)) {
-    // @todo move to encoder push.
     updateNoteRepeatSpeed();
   }
   else if (checkMode(ULTRASONIC_MASK)) {
@@ -444,8 +443,8 @@ void updateVelocityAndNotes() {
     // float pitchBend = getPitchModulationFromfader(faderValue);
     // MIDI.sendPitchBend(0.5f, midiChannel);
     // displayPrintFloat(pitchBend);
-    int newMidiValue = getMidiValueFromFader(faderPos[1]) - 60;
-    updateNotes(newMidiValue, newMidiValue);
+    uint16_t newMidiValue = getMidiValueFromFader(faderValue);
+    updateNotes(newMidiValue-60, newMidiValue);
     faderPos[1] = faderValue;
   }
 
@@ -549,15 +548,14 @@ void playPush(uint8_t pin, bool state) {
   }
 }
 
-uint8_t getMidiValueFromFader(uint16_t faderValue) {
-  // @todo @fixme here 0 <=> 60?
+uint16_t getMidiValueFromFader(unsigned long faderValue) {
   if (faderValue >= MAX_FADER_VALUE) {
     faderValue = 1024;
   }
   if (faderValue <= MIN_FADER_VALUE) {
     faderValue = 0;
   }
-  return 127 - (faderValue * 127 / 1024);
+  return 127 - ((faderValue * 127) / 1024);
 }
 
 float getPitchModulationFromfader(uint16_t faderValue) {
@@ -585,8 +583,8 @@ char* getNoteFromMidiValue(uint8_t midiValue) {
   return midiNote[midiValue];
 }
 
-uint16_t readFader(uint8_t f) {
-  uint16_t faderValue = analogRead(faderPin[f]);
+int readFader(uint8_t f) {
+  int faderValue = analogRead(faderPin[f]);
   if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
     if (faderValue >= MAX_FADER_VALUE) {
       return 1024;
@@ -645,11 +643,11 @@ void updatePadsLock() {
     mux.channel(pushPin[p]);
     uint8_t sensorVal = digitalRead(MUXSIG);
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-      if (rightPush == PUSHED && pushSettingsLocked[p] != true) {
+      if (leftPush == PUSHED && pushSettingsLocked[p] != true) {
         pushSettingsLocked[p] = true;
         displayPrintString("PAd" + String(p+1));
       }
-      else if (leftPush == PUSHED && pushSettingsLocked[p] != false) {
+      else if (rightPush == PUSHED && pushSettingsLocked[p] != false) {
         pushSettingsLocked[p] = false;
         displayPrintString("Glob");
       }
@@ -876,6 +874,9 @@ void updateNoteRepeatSpeed() {
 
   bool changed = false;
   uint8_t tmpRepeatSpeedDivisor = repeatSpeedDivisor;
+  if (pushSettingsLocked[selectedPushPin]) {
+    tmpRepeatSpeedDivisor = pushRepeatSpeed[selectedPushPin][1];
+  }
 
   encoderValue = readEncoder(1);
   if (encoderValue != encoderPos[1]) {
@@ -888,7 +889,7 @@ void updateNoteRepeatSpeed() {
     changed = true;
   }
   if (changed) {
-    if (pushSettingsLocked[selectedPushPin] || repeatIsLocked[selectedPushPin]) {
+    if (pushSettingsLocked[selectedPushPin]) {
       pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
     }
     else {
@@ -897,13 +898,12 @@ void updateNoteRepeatSpeed() {
 
     float newSpeedFraction = (float) 1 / (float) tmpRepeatSpeedDivisor;
     unsigned long relativeStartTime = millis() - startTime;
-    if (pushSettingsLocked[selectedPushPin] || repeatIsLocked[selectedPushPin]) {
-      pushElapsedRepeats[selectedPushPin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMillis(newSpeedFraction)) + 1;
-    }
-    else {
-      for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
-        pushElapsedRepeats[pin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMillis(newSpeedFraction)) + 1;;
+
+    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
+      if ((pushSettingsLocked[selectedPushPin] || repeatIsLocked[selectedPushPin]) && selectedPushPin != pin) {
+        continue;
       }
+      pushElapsedRepeats[pin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMillis(newSpeedFraction)) + 1;
     }
 
     display.clear();
