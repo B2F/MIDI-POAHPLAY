@@ -10,7 +10,13 @@
 #include <light_CD74HC4067.h>
 #include <HCSR04.h>
 
-const unsigned long BAUD_RATE = 57600;
+const unsigned long BAUD_RATE = 38400;
+
+// Push buttons:
+
+const byte PUSHED = LOW;
+const byte RELEASED = HIGH;
+const uint8_t NB_PUSH = 8;
 
 // Encoders:
 
@@ -53,7 +59,11 @@ byte midiCC1 = 0;
 byte midiCC2 = 0;
 byte midiCC1Value = 63;
 byte midiCC2Value = 63;
+// https://professionalcomposers.com/midi-cc-list/
+// 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
+byte midiCCPresets[NB_PUSH] = {91, 92, 93, 94, 95, 98, 99, 100};
 byte midiChannel = 2;
+byte programChange = 0;
 byte globalVelocity = 127;
 int globalNoteOffset = 0;
 byte ticksPerNote = 96;
@@ -194,12 +204,6 @@ char* midiNote[128] = {
   "G10 ",
 };
 
-// Push buttons:
-
-const byte PUSHED = LOW;
-const byte RELEASED = HIGH;
-const uint8_t NB_PUSH = 8;
-
 // LCD
 
 const uint8_t LCD_CLK = 12;
@@ -232,7 +236,12 @@ const uint8_t L4 = 7;
 
 const uint8_t triggerPin = 13;
 const uint8_t echoPin = 6;
+
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
+
+uint8_t MIN_ULTRASONIC_DISTANCE_CM = 5;
+uint8_t maxUltrasonicDistanceCm = 10;
+uint8_t ultrasonicCC = 100;
 
 // Magnet
 
@@ -245,16 +254,17 @@ const uint8_t SW_REPEAT = 1;
 const uint8_t SW_ULTRASONIC = 10;
 const uint8_t SW_PLAY = 11;
 
-const byte PLAY_MASK =       B00000001;
+const byte STOP_MASK =       B00000001;
 const byte CC_MASK =         B00000010;
 const byte REPEAT_MASK =     B00000100;
 const byte ULTRASONIC_MASK = B00001000;
 
 byte currentPlayMode = B00000000;
 
-byte switches[4][2] = {{SW_CC, CC_MASK}, {SW_PLAY, PLAY_MASK}, {SW_ULTRASONIC, ULTRASONIC_MASK}, {SW_REPEAT, REPEAT_MASK}};
+byte switches[4][2] = {{SW_CC, CC_MASK}, {SW_PLAY, STOP_MASK}, {SW_ULTRASONIC, ULTRASONIC_MASK}, {SW_REPEAT, REPEAT_MASK}};
 
-// @todo: ajouter un bouton reset qui peut aussi servir a verrouiller un note repeat.
+// @todo: ajouter un bouton reset + save.
+// @todo: ajouter un bouton pour voir les réglages (velo, note, cc) dans le lcd.
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
@@ -284,7 +294,6 @@ uint16_t oneNoteTime = 0;
 unsigned long stopTime = 0;
 
 uint8_t pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
-// @todo Dynamic getPushNote setting relative to global if 0 and locked.
 byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
@@ -332,31 +341,28 @@ void setup() {
 
   readSwitches();
 
-  if (playButtonPressed == true) {
-    return;
-  }
+  // if (checkMode(STOP_MASK)) {
+  //   return;
+  // }
 
   // LCD:
   display.begin();
   display.print("P0AH");
   delay(1000);
-  if (playButtonPressed == true) {
+  if (checkMode(STOP_MASK)) {
     readSwitches();
-    if (playButtonPressed == true) {
+    if (checkMode(STOP_MASK)) {
       display.blink();
       readSwitches();
-      if (playButtonPressed == true) {
+      if (checkMode(STOP_MASK)) {
         display.print("P0AH PLAY");
         readSwitches();
-        if (playButtonPressed == true) {
+        if (checkMode(STOP_MASK)) {
           display.snake(2, 70);
         }
       }
     }
   }
-
-  // @todo init faders at setup.
-
 }
 
 bool isElapsed(unsigned long &time, int timeLength) {
@@ -397,21 +403,21 @@ void loop() {
     updateNoteRepeatSpeed();
   }
   else if (checkMode(ULTRASONIC_MASK)) {
-
+    updateUltrasonicSettings();
   }
   else if (checkMode(CC_MASK)) {
     selectMidiControls();
   }
   else {
-    // @todo: midi channel
+    updateDefaultGlobalSettings();
   }
 
   // Maj des réglages de niveau 3 (play button):
-  if (checkMode(PLAY_MASK)) {
+  if (!checkMode(STOP_MASK) && playFlag == false) {
     // @todo send keyboard key press ?
-    // Serial.write(0XFA);
-    // display.println("0XFA");
+    Serial.write(0XFA);
     // MIDI.sendStop();
+    displayPrintString("PLAY");
   }
 
   // Maj des réglages de niveau 4 (pad lock):
@@ -419,14 +425,28 @@ void loop() {
     updatePadsRepeatLock();
   }
   else if (checkMode(CC_MASK)) {
-    // @todo Ajouter 8 raccourcis de midiCC via les pads lorsque les switch encoder sont sélectionnés.
+    setCCPreset();
   }
   else {
     updatePadsLock();
   }
+}
 
-  // double distance = distanceSensor.measureDistanceCm();
-  // Serial.println(distance);
+void updateDefaultGlobalSettings() {
+  encoderValue = readEncoder(0);
+  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
+    uint8_t newMidiChannel = getMidiValueFromEncoder(midiChannel, encoderValue, encoderPos[1]);
+    newMidiChannel = newMidiChannel = 17 ? 17 : newMidiChannel;
+    displayPrintString("CH" + String(newMidiChannel));
+    encoderPos[0] = newMidiChannel;
+  }
+  encoderValue = readEncoder(1);
+  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
+    uint8_t newProgram = getMidiValueFromEncoder(programChange, encoderValue, encoderPos[0]);
+    MIDI.sendProgramChange(newProgram, midiChannel);
+    displayPrintString("P" + String(newProgram));
+    encoderPos[1] = newProgram;
+  }
 }
 
 void updateVelocityAndNotes() {
@@ -612,12 +632,12 @@ int readEncoder(uint8_t e) {
 void updateVelocity(uint8_t globalMidiValue, uint8_t localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
-    displayPrintInt(localMidiValue);
+    displayPrintString(String(localMidiValue) + "v");
   }
   else {
     globalVelocity = globalMidiValue;
     pushVelocity[selectedPushPin] = globalVelocity;
-    displayPrintInt(globalVelocity);
+    displayPrintString(String(globalVelocity) + "v");
   }
 }
 
@@ -692,14 +712,17 @@ void updatePads() {
       isPushed[p] = PUSHED;
       selectedPushPin = p;
 
-      if (playFlag == false || !checkMode(REPEAT_MASK)) {
+      if (
+        (playFlag == false || !checkMode(REPEAT_MASK))
+      &&
+        (!checkMode(CC_MASK) && (rightPush || leftPush))
+      ) {
         playPush(p, 1);
         if (leftPush == RELEASED && rightPush == RELEASED) {
           display.clear();
           display.setColonOn(false);
         }
       }
-      // @todo else start playback
     }
     else if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
@@ -799,9 +822,6 @@ void MidiSync() {
 
 void readSwitches() {
 
-  // @todo ajouter un mode ou le clic sur un encoder permet de modifier le midi channel en variant l'autre encoder et la vitesse de note repeat inversement.
-  // en mode note repeat permet de changer la vitesse.
-  // Ajouter un bouton reset des settings globaux.
   currentPlayMode = B00000000;
   for (byte position = 0; position < 4; position++) {
     byte sw = switches[position][0];
@@ -844,14 +864,14 @@ void updateMidiControls() {
     midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
     MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
     encoderPos[0] = encoderValue;
-    displayPrintInt(midiCC1Value);
+    displayPrintString(String(midiCC1Value) + "c");
   }
   encoderValue = readEncoder(1);
   if (leftPush == RELEASED && encoderValue != encoderPos[1]) {
     midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
     MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
     encoderPos[1] = encoderValue;
-    displayPrintInt(midiCC2Value);
+    displayPrintString(String(midiCC2Value) + "c");
   }
 
   faderValue = readFader(0);
@@ -859,14 +879,14 @@ void updateMidiControls() {
     faderPos[0] = faderValue;
     midiCC1Value = getMidiValueFromFader(faderPos[0]);
     MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-    displayPrintInt(midiCC1Value);
+    displayPrintString(String(midiCC1Value) + "c");
   }
   faderValue = readFader(1);
   if (faderValue != faderPos[1]) {
     faderPos[1] = faderValue;
     midiCC2Value = getMidiValueFromFader(faderPos[1]);
     MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-    displayPrintInt(midiCC2Value);
+    displayPrintString(String(midiCC2Value) + "c");
   }
 }
 
@@ -909,6 +929,45 @@ void updateNoteRepeatSpeed() {
     display.clear();
     display.print(" 1" + String(tmpRepeatSpeedDivisor));
     display.setColonOn(true);
+  }
+}
+
+void updateUltrasonicSettings() {
+  if (leftPush == PUSHED && encoderValue != encoderPos[0]) {
+    ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderValue, encoderPos[0]);
+    displayPrintString("u" + maxUltrasonicDistanceCm);
+    encoderPos[1] = ultrasonicCC;
+  }
+  else if (rightPush == PUSHED && encoderValue != encoderPos[1]) {
+    maxUltrasonicDistanceCm = maxUltrasonicDistanceCm - encoderValue;
+    displayPrintString("d" + maxUltrasonicDistanceCm);
+    encoderPos[1] = maxUltrasonicDistanceCm;
+  }
+  uint8_t distance = distanceSensor.measureDistanceCm();
+  distance = distance > maxUltrasonicDistanceCm ? maxUltrasonicDistanceCm : distance;
+  float distancePercentage = 1 - ((float) (distance - MIN_ULTRASONIC_DISTANCE_CM) / (float) (maxUltrasonicDistanceCm - MIN_ULTRASONIC_DISTANCE_CM));
+  uint8_t ultrasonicControlValue = distancePercentage * 127;
+  MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
+}
+
+void setCCPreset() {
+  for (uint8_t p = 0; p < NB_PUSH; p++) {
+
+    mux.channel(pushPin[p]);
+    uint8_t sensorVal = digitalRead(MUXSIG);
+
+    if (sensorVal == RELEASED) {
+      continue;
+    }
+
+    if (leftPush == PUSHED) {
+      midiCC1 = midiCCPresets[p];
+      displayPrintString("C" + String(midiCCPresets[p]));
+    }
+    else if (rightPush == PUSHED) {
+      midiCC2 = midiCCPresets[p];
+      displayPrintString("C" + String(midiCCPresets[p]));
+    }
   }
 }
 
