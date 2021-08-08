@@ -933,14 +933,16 @@ void updateNoteRepeatSpeed() {
 }
 
 void updateUltrasonicSettings() {
-  if (leftPush == PUSHED && encoderValue != encoderPos[0]) {
+  encoderValue = readEncoder(0);
+  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
     ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderValue, encoderPos[0]);
-    displayPrintString("u" + maxUltrasonicDistanceCm);
+    displayPrintString("u" + String(ultrasonicCC));
     encoderPos[0] = encoderValue;
   }
-  else if (rightPush == PUSHED && encoderValue != encoderPos[1]) {
-    maxUltrasonicDistanceCm = maxUltrasonicDistanceCm - encoderValue;
-    displayPrintString("d" + maxUltrasonicDistanceCm);
+  encoderValue = readEncoder(1);
+  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
+    maxUltrasonicDistanceCm = maxUltrasonicDistanceCm + (encoderValue - encoderPos[1]);
+    displayPrintString("d" + String(maxUltrasonicDistanceCm));
     encoderPos[1] = encoderValue;
   }
   uint8_t distance = distanceSensor.measureDistanceCm();
