@@ -245,6 +245,13 @@ void reset() {
 void setup() {
 
   Serial.begin(BAUD_RATE);
+  while(!Serial) ;
+
+  Serial.print("Compiled on ");
+  Serial.print(__DATE__);
+  Serial.print(" at ");
+  Serial.println(__TIME__);
+  Serial.println();
 
   // Push
   for (uint8_t pad = 0; pad < NB_PUSH; pad++) {
@@ -821,14 +828,14 @@ void updateMidiControls() {
     faderPos[0] = faderValue;
     midiCC1Value = getMidiValueFromFader(faderPos[0]);
     MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-    displayPrintString(String(midiCC1Value) + "c");
+    displayPrintString("c" + String(midiCC1Value));
   }
   faderValue = readFader(1);
   if (faderValue != faderPos[1]) {
     faderPos[1] = faderValue;
     midiCC2Value = getMidiValueFromFader(faderPos[1]);
     MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-    displayPrintString(String(midiCC2Value) + "c");
+    displayPrintString("c" + String(midiCC2Value));
   }
 }
 
@@ -907,11 +914,11 @@ void setCCPreset() {
 
     if (leftPush == PUSHED) {
       midiCC1 = midiCCPresets[p];
-      displayPrintString("C" + String(midiCCPresets[p]));
+      displayPrintString("P" + String(midiCCPresets[p]));
     }
     else if (rightPush == PUSHED) {
       midiCC2 = midiCCPresets[p];
-      displayPrintString("C" + String(midiCCPresets[p]));
+      displayPrintString("P" + String(midiCCPresets[p]));
     }
   }
 }
