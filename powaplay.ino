@@ -357,7 +357,7 @@ void loop() {
     // MIDI.sendStop();
     // displayPrintString("PLAY");
     // Reset:
-    if (leftPush) {
+    if (leftPush == PUSHED) {
       displayPrintString("init");
       reset();
     }
