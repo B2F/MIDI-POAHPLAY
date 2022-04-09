@@ -173,7 +173,7 @@ uint8_t bpm = 120;
 uint8_t repeatSpeedDividend = 1;
 uint8_t repeatSpeedDivisor = 4;
 uint8_t globalStartNote = 48;
-uint16_t oneNoteTime = 0;
+unsigned long oneNoteTime = 0;
 unsigned long stopTime = 0;
 
 uint8_t pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
@@ -281,8 +281,8 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   // MIDI Clock:
-  quarterNoteTime = millis();
-  oneNoteTime = getNoteMillis();
+  quarterNoteTime = micros();
+  oneNoteTime = getNoteMicros();
 
   readSwitches();
 
@@ -310,25 +310,15 @@ void setup() {
   }
 }
 
-bool isElapsed(unsigned long &time, int timeLength) {
-  if (millis() > (time + timeLength)) {
-    time = millis();
-    return true;
-  }
-  else {
-    return false;
-  }
-}
-
 void loop() {
 
-  unsigned long loopTime = millis();
+  unsigned long loopTime = micros();
 
   updateMidiSerial();
   if (playFlag) {
     updateLedsTempo();
   }
-  else if (playFlag == false && isElapsed(lastNoteRepeat, 10)) {
+  else if (playFlag == false) {
     playNotesRepeat();
   }
 
@@ -444,13 +434,13 @@ bool updateMidiSerial() {
     return false;
   }
 
-  unsigned long loopTime = millis();
+  unsigned long loopTime = micros();
 
   byte serialByte = Serial.read();
 
   if (serialByte == MIDI_CONTINUE) {
     playFlag = true;
-    startTime += millis() - stopTime;
+    startTime += micros() - stopTime;
     display.clear();
     display.print("CONT");
   }
@@ -466,7 +456,7 @@ bool updateMidiSerial() {
   }
   if (serialByte == MIDI_STOP) {
     playFlag = false;
-    stopTime = millis();
+    stopTime = micros();
     display.clear();
     display.print("STOP");
   }
@@ -485,7 +475,7 @@ bool updateMidiSerial() {
 
     MidiSync();
 
-    if (loopTime > getNextNoteMillis()) {
+    if (loopTime > getNextNoteMicros()) {
       nbElapsedNotes++;
     }
 
@@ -684,8 +674,8 @@ void playNotesRepeat() {
     return;
   }
   for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
-    unsigned long nextCap = getNextRepeatMillis(pin);
-    if (millis() > nextCap) {
+    unsigned long nextCap = getNextRepeatMicros(pin);
+    if (micros() > nextCap) {
       pushElapsedRepeats[pin]++;
       if (isPushed[pin] == PUSHED || repeatIsLocked[pin] == true) {
         playPush(pin, 1);
@@ -702,45 +692,45 @@ float getPushPinFraction(uint8_t pin) {
 
 void updateLedsTempo() {
 
-  unsigned long nextNoteMillis = getNextNoteMillis();
-  unsigned long loopTime = millis();
+  unsigned long nextNoteMicros = getNextNoteMicros();
+  unsigned long loopTime = micros();
 
   // @todo flash oxxx then oooo if no SPP found.
-  if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.25))) {
+  if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.25))) {
     writeLeds(HIGH, HIGH, HIGH, HIGH);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.5))) {
+  else if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.5))) {
     writeLeds(HIGH, HIGH, HIGH, LOW);
   }
-  else if (loopTime > (nextNoteMillis - getOneNoteFractionMillis(0.75))) {
+  else if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.75))) {
     writeLeds(HIGH, HIGH, LOW, LOW);
   }
-  else if (loopTime > (nextNoteMillis - oneNoteTime)) {
+  else if (loopTime > (nextNoteMicros - oneNoteTime)) {
     writeLeds(HIGH, LOW, LOW, LOW);
   }
 
 }
 
-uint16_t getOneNoteFractionMillis(float fraction) {
+unsigned long getOneNoteFractionMicros(float fraction) {
   return oneNoteTime * fraction;
 }
 
-unsigned long getNextNoteMillis() {
+unsigned long getNextNoteMicros() {
   return startTime + ((nbElapsedNotes + 1) * oneNoteTime);
 }
 
-unsigned long getNextRepeatMillis(int pin) {
+unsigned long getNextRepeatMicros(int pin) {
   float pinRepeatSpeed = getPushPinFraction(pin);
-  uint16_t oneNoteFractionMillis = getOneNoteFractionMillis(pinRepeatSpeed);
-  return startTime + (pushElapsedRepeats[pin] * oneNoteFractionMillis) + oneNoteFractionMillis;
+  unsigned long oneNoteFractionMicros = getOneNoteFractionMicros(pinRepeatSpeed);
+  return startTime + (pushElapsedRepeats[pin] * oneNoteFractionMicros) + oneNoteFractionMicros;
 }
 
-uint16_t getNoteMillis() {
-  return getBeatMillis(4);
+unsigned long getNoteMicros() {
+  return getBeatMicros(4);
 }
 
-uint16_t getBeatMillis(int nbBeats) {
-  return (1000 / ((float) bpm / 60)) * (float) nbBeats;
+unsigned long getBeatMicros(int nbBeats) {
+  return  (1000000 / ((float) bpm / 60)) * (float) nbBeats;
 }
 
 void updateBpm() {
@@ -749,13 +739,13 @@ void updateBpm() {
   if (midiCLockTick % 24 == 0) {
 
     // BPM:
-    unsigned long bpmTime = millis();
+    unsigned long bpmTime = micros();
     quarterNoteTime = bpmTime - quarterNoteTime;
-    unsigned long newBpm = 60000/quarterNoteTime;
+    unsigned long newBpm = 60000000/quarterNoteTime;
     if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
       displayPrintInt(bpm);
-      oneNoteTime = getNoteMillis();
+      oneNoteTime = getNoteMicros();
       startTime = startTime * (bpm / newBpm);
       // @todo send stop play.
     }
@@ -866,13 +856,13 @@ void updateNoteRepeatSpeed() {
     }
 
     float newSpeedFraction = (float) 1 / (float) tmpRepeatSpeedDivisor;
-    unsigned long relativeStartTime = millis() - startTime;
+    unsigned long relativeStartTime = micros() - startTime;
 
     for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
       if ((pushSettingsLocked[selectedPushPin] || repeatIsLocked[selectedPushPin]) && selectedPushPin != pin) {
         continue;
       }
-      pushElapsedRepeats[pin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMillis(newSpeedFraction)) + 1;
+      pushElapsedRepeats[pin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMicros(newSpeedFraction)) + 1;
     }
 
     display.clear();
