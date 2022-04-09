@@ -74,134 +74,17 @@ unsigned long lastClockPulse = 0;
 unsigned long lastNoteRepeat = 0;
 
 char* midiNote[128] = {
-  " C0 ",
-  " CH0",
-  " d0 ",
-  " dH0",
-  " E0 ",
-  " F0 ",
-  " FH0",
-  " G0 ",
-  " GH0",
-  " A0 ",
-  " AH0",
-  " b0 ",
-  " C1 ",
-  " CH1",
-  " d1 ",
-  " dH1",
-  " E1 ",
-  " F1 ",
-  " FH1",
-  " G1 ",
-  " GH1",
-  " A1 ",
-  " AH1",
-  " b1 ",
-  " C2 ",
-  " CH2",
-  " d2 ",
-  " dH2",
-  " E2 ",
-  " F2 ",
-  " FH2",
-  " G2 ",
-  " GH2",
-  " A2 ",
-  " AH2",
-  " b2 ",
-  " C3 ",
-  " CH3",
-  " d3 ",
-  " dH3",
-  " E3 ",
-  " F3 ",
-  " FH3",
-  " G3 ",
-  " GH3",
-  " A3 ",
-  " AH3",
-  " b3 ",
-  " C4 ",
-  " CH4",
-  " d4 ",
-  " dH4",
-  " E4 ",
-  " F4 ",
-  " FH4",
-  " G4 ",
-  " GH4",
-  " A4 ",
-  " AH4",
-  " b4 ",
-  " C5 ",
-  " CH5",
-  " d5 ",
-  " dH5",
-  " E5 ",
-  " F5 ",
-  " FH5",
-  " G5 ",
-  " GH5",
-  " A5 ",
-  " AH5",
-  " b5 ",
-  " C6 ",
-  " CH6",
-  " d6 ",
-  " dH6",
-  " E6 ",
-  " F6 ",
-  " FH6",
-  " G6 ",
-  " GH6",
-  " A6 ",
-  " AH6",
-  " b6 ",
-  " C7 ",
-  " CH7",
-  " d7 ",
-  " dH7",
-  " E7 ",
-  " F7 ",
-  " FH7",
-  " G7 ",
-  " GH7",
-  " A7 ",
-  " AH7",
-  " b7 ",
-  " C8 ",
-  " CH8",
-  " d8 ",
-  " dH8",
-  " E8 ",
-  " F8 ",
-  " FH8",
-  " G8 ",
-  " GH8",
-  " A8 ",
-  " AH8",
-  " b8 ",
-  " C9 ",
-  " CH9",
-  " d9 ",
-  " dH9",
-  " E9 ",
-  " F9 ",
-  " FH9",
-  " G9 ",
-  " GH9",
-  "A10 ",
-  "AH10",
-  "b10 ",
-  "C10 ",
-  "CH10",
-  "d10 ",
-  "dH10",
-  "E10 ",
-  "F10 ",
-  "FH10",
-  "G10 ",
+  " C0 ", " C#0", " d0 ", " d#0", " E0 ", " F0 ", " F#0", " G0 ", " G#0", " A0 ", " A#0", " b0 ",
+  " C1 ", " C#1", " d1 ", " d#1", " E1 ", " F1 ", " F#1", " G1 ", " G#1", " A1 ", " A#1", " b1 ",
+  " C2 ", " C#2", " d2 ", " d#2", " E2 ", " F2 ", " F#2", " G2 ", " G#2", " A2 ", " A#2", " b2 ",
+  " C3 ", " C#3", " d3 ", " d#3", " E3 ", " F3 ", " F#3", " G3 ", " G#3", " A3 ", " A#3", " b3 ",
+  " C4 ", " C#4", " d4 ", " d#4", " E4 ", " F4 ", " F#4", " G4 ", " G#4", " A4 ", " A#4", " b4 ",
+  " C5 ", " CH5", " d5 ", " dH5", " E5 ", " F5 ", " FH5", " G5 ", " GH5", " A5 ", " AH5", " b5 ",
+  " C6 ", " CH6", " d6 ", " dH6", " E6 ", " F6 ", " FH6", " G6 ", " GH6", " A6 ", " AH6", " b6 ",
+  " C7 ", " CH7", " d7 ", " dH7", " E7 ", " F7 ", " FH7", " G7 ", " GH7", " A7 ", " AH7", " b7 ",
+  " C8 ", " CH8", " d8 ", " dH8", " E8 ", " F8 ", " FH8", " G8 ", " GH8", " A8 ", " AH8", " b8 ",
+  " C9 ", " CH9", " d9 ", " dH9", " E9 ", " F9 ", " FH9", " G9 ", " GH9", "A10 ", "AH10", "b10 ",
+  "C10 ", "CH10", "d10 ", "dH10", "E10 ", "F10 ", "FH10", "G10 ",
 };
 
 // LCD
@@ -303,6 +186,61 @@ unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
 byte isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
 byte repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int selectedPushPin = -1;
+
+void reset() {
+  midiCC1 = 0;
+  midiCC2 = 0;
+  midiCC1Value = 63;
+  midiCC2Value = 63;
+  // https://professionalcomposers.com/midi-cc-list/
+  // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
+  midiCCPresets[0] = 91;
+  midiCCPresets[1] = 92;
+  midiCCPresets[2] = 93;
+  midiCCPresets[3] = 94;
+  midiCCPresets[4] = 95;
+  midiCCPresets[5] = 98;
+  midiCCPresets[6] = 99;
+  midiCCPresets[7] = 100;
+  midiChannel = 2;
+  programChange = 0;
+  globalVelocity = 127;
+  globalNoteOffset = 0;
+  ultrasonicCC = 100;
+  currentPlayMode = B00000000;
+  midiCCIsActive = false;
+  ultrasonicSensorIsActive = false;
+  noteRepeatIsActive = false;
+  encoderSwitch1isActive = false;
+  encoderSwitch2isActive = false;
+  rightPush = RELEASED;
+  leftPush = RELEASED;
+  playButtonPressed = false;
+  repeatSpeedDividend = 1;
+  repeatSpeedDivisor = 4;
+  globalStartNote = 48;
+
+  for (int i = 0; i < 8; i++) {
+    pushVelocity[i] = 100;
+  }
+  for (int i = 0; i < 8; i++) {
+    pushSettingsLocked[i] = false;
+  }
+  for (int i = 0; i < 8; i++) {
+    pushRepeatSpeed[i][0] = 1;
+    pushRepeatSpeed[i][1] = 4;
+  }
+  for (int i = 0; i < 8; i++) {
+    pushElapsedRepeats[i] = 0;
+  }
+  for (int i = 0; i < 8; i++) {
+    isPushed[i] = RELEASED;
+  }
+  for (int i = 0; i < 8; i++) {
+    repeatIsLocked[i] = false;
+  }
+  selectedPushPin = -1;
+}
 
 void setup() {
 
@@ -415,9 +353,14 @@ void loop() {
   // Maj des réglages de niveau 3 (play button):
   if (!checkMode(STOP_MASK) && playFlag == false) {
     // @todo send keyboard key press ?
-    Serial.write(0XFA);
+    // Serial.write(0XFA);
     // MIDI.sendStop();
-    displayPrintString("PLAY");
+    // displayPrintString("PLAY");
+    // Reset:
+    if (leftPush) {
+      displayPrintString("init");
+      reset();
+    }
   }
 
   // Maj des réglages de niveau 4 (pad lock):
@@ -450,6 +393,8 @@ void updateDefaultGlobalSettings() {
 }
 
 void updateVelocityAndNotes() {
+
+  // @todo note presets + gammes
 
   faderValue = readFader(0);
   if (faderValue != faderPos[0] && rightPush == RELEASED) {
@@ -632,12 +577,12 @@ int readEncoder(uint8_t e) {
 void updateVelocity(uint8_t globalMidiValue, uint8_t localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
-    displayPrintString(String(localMidiValue) + "v");
+    displayPrintString("v" + String(localMidiValue));
   }
   else {
     globalVelocity = globalMidiValue;
     pushVelocity[selectedPushPin] = globalVelocity;
-    displayPrintString(String(globalVelocity) + "v");
+    displayPrintString("v" + String(globalVelocity));
   }
 }
 
@@ -663,11 +608,11 @@ void updatePadsLock() {
     mux.channel(pushPin[p]);
     uint8_t sensorVal = digitalRead(MUXSIG);
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-      if (leftPush == PUSHED && pushSettingsLocked[p] != true) {
+      if (leftPush == PUSHED) {
         pushSettingsLocked[p] = true;
         displayPrintString("PAd" + String(p+1));
       }
-      else if (rightPush == PUSHED && pushSettingsLocked[p] != false) {
+      else if (rightPush == PUSHED) {
         pushSettingsLocked[p] = false;
         displayPrintString("Glob");
       }
@@ -712,11 +657,7 @@ void updatePads() {
       isPushed[p] = PUSHED;
       selectedPushPin = p;
 
-      if (
-        (playFlag == false || !checkMode(REPEAT_MASK))
-      &&
-        (!checkMode(CC_MASK) && (rightPush || leftPush))
-      ) {
+      if (!checkMode(CC_MASK) || (rightPush == RELEASED && leftPush == RELEASED)) {
         playPush(p, 1);
         if (leftPush == RELEASED && rightPush == RELEASED) {
           display.clear();
@@ -832,6 +773,7 @@ void readSwitches() {
     }
   }
 
+  // @todo replace P1SW & P2SW with two new dedicated push buttons.
   mux.channel(P1SW);
   leftPush = digitalRead(MUXSIG);
   mux.channel(P2SW);
@@ -864,14 +806,14 @@ void updateMidiControls() {
     midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
     MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
     encoderPos[0] = encoderValue;
-    displayPrintString(String(midiCC1Value) + "c");
+    displayPrintString("c" + String(midiCC1Value));
   }
   encoderValue = readEncoder(1);
   if (leftPush == RELEASED && encoderValue != encoderPos[1]) {
     midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
     MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
     encoderPos[1] = encoderValue;
-    displayPrintString(String(midiCC2Value) + "c");
+    displayPrintString("c" + String(midiCC2Value));
   }
 
   faderValue = readFader(0);
@@ -936,7 +878,7 @@ void updateUltrasonicSettings() {
   encoderValue = readEncoder(0);
   if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
     ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderValue, encoderPos[0]);
-    displayPrintString("u" + String(ultrasonicCC));
+    displayPrintString("C" + String(ultrasonicCC));
     encoderPos[0] = encoderValue;
   }
   encoderValue = readEncoder(1);
@@ -947,6 +889,7 @@ void updateUltrasonicSettings() {
   }
   uint8_t distance = distanceSensor.measureDistanceCm();
   distance = distance > maxUltrasonicDistanceCm ? maxUltrasonicDistanceCm : distance;
+  distance = distance < MIN_ULTRASONIC_DISTANCE_CM ? MIN_ULTRASONIC_DISTANCE_CM : distance;
   float distancePercentage = 1 - ((float) (distance - MIN_ULTRASONIC_DISTANCE_CM) / (float) (maxUltrasonicDistanceCm - MIN_ULTRASONIC_DISTANCE_CM));
   uint8_t ultrasonicControlValue = distancePercentage * 127;
   MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
