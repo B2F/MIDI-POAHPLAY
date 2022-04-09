@@ -247,7 +247,7 @@ void setup() {
   Serial.begin(BAUD_RATE);
   while(!Serial) ;
 
-  Serial.print("Compiled on ");
+  Serial.print("bnobs.art P0AH PLAY --- Compiled on ");
   Serial.print(__DATE__);
   Serial.print(" at ");
   Serial.println(__TIME__);
