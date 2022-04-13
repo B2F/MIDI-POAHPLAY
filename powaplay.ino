@@ -183,7 +183,17 @@ bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, fa
 byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
 // Nb elapsed repeats timeframes (not necessarily used) since last start time:
 unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
-byte isPushed[NB_PUSH] = {RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED, RELEASED};
+byte isPushed[NB_PUSH] = {
+  RELEASED,
+  RELEASED,
+  RELEASED,
+  RELEASED,
+  RELEASED,
+  RELEASED,
+  RELEASED,
+  RELEASED
+};
+unsigned long pushedTime[NB_PUSH] = {0,0,0,0,0,0,0,0};
 byte repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int selectedPushPin = -1;
 
@@ -448,9 +458,6 @@ bool updateMidiSerial() {
     playFlag = true;
     startTime = loopTime - MIDI_START_OFFSET;
     nbElapsedNotes = 0;
-    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
-      pushElapsedRepeats[pin] = 0;
-    }
     display.clear();
     display.print("PLAY");
   }
@@ -655,6 +662,7 @@ void updatePads() {
       selectedPushPin = p;
 
       if (!checkMode(CC_MASK) || (rightPush == RELEASED && leftPush == RELEASED)) {
+        pushedTime[p] = micros();
         playPush(p, 1);
         if (leftPush == RELEASED && rightPush == RELEASED) {
           display.clear();
@@ -670,24 +678,30 @@ void updatePads() {
 }
 
 void playNotesRepeat() {
-  if (!checkMode(REPEAT_MASK)) {
-    return;
-  }
   for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
+    if (
+      (isPushed[pin] == RELEASED) ||
+      (!checkMode(REPEAT_MASK) && repeatIsLocked[pin] == false)
+    ) {
+      pushedTime[pin] = getNextRepeatMicros(pin);
+      pushElapsedRepeats[pin] = 0;
+    }
     unsigned long nextCap = getNextRepeatMicros(pin);
-    if (micros() > nextCap) {
-      pushElapsedRepeats[pin]++;
-      if (isPushed[pin] == PUSHED || repeatIsLocked[pin] == true) {
-        playPush(pin, 1);
+    if (nextCap != 0 && micros() > nextCap) {
+      if (
+        (checkMode(REPEAT_MASK) && isPushed[pin] == PUSHED) ||
+        repeatIsLocked[pin] == true
+      ) {
+        pushElapsedRepeats[pin]++;
+        playPush(pin, true);
       }
     }
   }
 }
 
-float getPushPinFraction(uint8_t pin) {
-  uint8_t currentRepeatSpeedDividend = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][0] : repeatSpeedDividend;
+float getRepeatSpeed(uint8_t pin) {
   uint8_t currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
-  return (float) currentRepeatSpeedDividend / (float) currentRepeatSpeedDivisor;
+  return (float) 4 * ((float) 1 / (float) currentRepeatSpeedDivisor);
 } 
 
 void updateLedsTempo() {
@@ -720,9 +734,12 @@ unsigned long getNextNoteMicros() {
 }
 
 unsigned long getNextRepeatMicros(int pin) {
-  float pinRepeatSpeed = getPushPinFraction(pin);
-  unsigned long oneNoteFractionMicros = getOneNoteFractionMicros(pinRepeatSpeed);
-  return startTime + (pushElapsedRepeats[pin] * oneNoteFractionMicros) + oneNoteFractionMicros;
+  float pinRepeatSpeed = getRepeatSpeed(pin);
+  unsigned long pushDuration = (float) getBeatMicros(1) * pinRepeatSpeed;
+  unsigned long nextTriggerTime = pushedTime[pin] + (pushElapsedRepeats[pin] * pushDuration);
+  return nextTriggerTime;
+  // @todo option sans quantize pour remplacer startTime par push repeat time.
+  // return startTime - 5000 + (pushElapsedRepeats[pin] * oneNoteFractionMicros) + oneNoteFractionMicros;
 }
 
 unsigned long getNoteMicros() {
@@ -840,33 +857,22 @@ void updateNoteRepeatSpeed() {
   encoderValue = readEncoder(1);
   if (encoderValue != encoderPos[1]) {
     tmpRepeatSpeedDivisor = tmpRepeatSpeedDivisor + encoderValue - encoderPos[1];
-    if (tmpRepeatSpeedDivisor > 32) {
-      tmpRepeatSpeedDivisor = 32;
+    if (tmpRepeatSpeedDivisor > 64) {
+      tmpRepeatSpeedDivisor = 64;
     }
     if (tmpRepeatSpeedDivisor < 1) { tmpRepeatSpeedDivisor = 1; }
     encoderPos[1] = encoderValue;
     changed = true;
   }
   if (changed) {
-    if (pushSettingsLocked[selectedPushPin]) {
-      pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
+    repeatSpeedDivisor = tmpRepeatSpeedDivisor;
+    pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
+    for (int pad = 0; pad < NB_PUSH; pad++) {
+      pushElapsedRepeats[pad] = 0;
+      pushedTime[pad] = micros();
     }
-    else {
-      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
-    }
-
-    float newSpeedFraction = (float) 1 / (float) tmpRepeatSpeedDivisor;
-    unsigned long relativeStartTime = micros() - startTime;
-
-    for (uint8_t pin = 0; pin < NB_PUSH; pin++) {
-      if ((pushSettingsLocked[selectedPushPin] || repeatIsLocked[selectedPushPin]) && selectedPushPin != pin) {
-        continue;
-      }
-      pushElapsedRepeats[pin] = ceil((float) relativeStartTime / (float) getOneNoteFractionMicros(newSpeedFraction)) + 1;
-    }
-
     display.clear();
-    display.print(" 1" + String(tmpRepeatSpeedDivisor));
+    display.print(" 1" + String(repeatSpeedDivisor));
     display.setColonOn(true);
   }
 }
