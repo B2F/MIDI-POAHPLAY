@@ -175,6 +175,7 @@ uint8_t repeatSpeedDivisor = 4;
 uint8_t globalStartNote = 48;
 unsigned long oneNoteTime = 0;
 unsigned long stopTime = 0;
+int octave = 0;
 
 uint8_t pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 byte pushNote[NB_PUSH];
@@ -250,6 +251,7 @@ void reset() {
     repeatIsLocked[i] = false;
   }
   selectedPushPin = -1;
+  octave = 0;
 }
 
 void setup() {
@@ -415,8 +417,7 @@ void updateVelocityAndNotes() {
     // float pitchBend = getPitchModulationFromfader(faderValue);
     // MIDI.sendPitchBend(0.5f, midiChannel);
     // displayPrintFloat(pitchBend);
-    uint16_t newMidiValue = getMidiValueFromFader(faderValue);
-    updateNotes(newMidiValue-60, newMidiValue);
+    setOctaveFromFader(faderValue);
     faderPos[1] = faderValue;
   }
 
@@ -430,10 +431,8 @@ void updateVelocityAndNotes() {
   }
   encoderValue = readEncoder(1);
   if (leftPush == RELEASED && encoderValue != encoderPos[1]) {
-    updateNotes(
-      (getMidiValueFromEncoder(60+globalNoteOffset, encoderValue, encoderPos[1]) - 60),
-      getMidiValueFromEncoder(pushNote[selectedPushPin], encoderValue, encoderPos[1])
-    );
+    bool direction = encoderValue > encoderPos[1];
+    moveOctave(direction);
     encoderPos[1] = encoderValue;
   }
 }
@@ -527,6 +526,18 @@ uint16_t getMidiValueFromFader(unsigned long faderValue) {
   return 127 - ((faderValue * 127) / 1024);
 }
 
+void setOctaveFromFader(unsigned long faderValue) {
+  if (faderValue >= MAX_FADER_VALUE) {
+    faderValue = 1024;
+  }
+  if (faderValue <= MIN_FADER_VALUE) {
+    faderValue = 0;
+  }
+  octave = (faderValue / 100) - 4;
+  octave > 0 ? displayPrintString(String(octave) + "oct") : displayPrintString(String(octave) + "oc");
+  globalNoteOffset = octave * 12;
+}
+
 float getPitchModulationFromfader(uint16_t faderValue) {
   if (faderValue > 512) {
     return (float) (faderValue - 512) / 512;
@@ -604,6 +615,23 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
     char* note = getNoteFromMidiValue(60+globalNoteOffset);
     displayPrintChar(note);
   }
+}
+
+void moveOctave(bool up) {
+  if (up && octave < 6) {
+    octave++;
+  }
+  else if (up && octave > 6) {
+    octave = 6;
+  }
+  else if (octave <= -4) {
+    octave = -4;
+  }
+  else {
+    octave--;
+  }
+  octave > 0 ? displayPrintString(String(octave) + "oct") : displayPrintString(String(octave) + "oc");
+  globalNoteOffset = octave * 12;
 }
 
 void updatePadsLock() {
