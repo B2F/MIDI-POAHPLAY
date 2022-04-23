@@ -12,15 +12,18 @@
 
 const unsigned long BAUD_RATE = 38400;
 
+// Misc
+
+const uint8_t UNASSIGNED = 255;
+
 // Push buttons:
 
 const byte PUSHED = LOW;
 const byte RELEASED = HIGH;
 const uint8_t NB_PUSH = 8;
+const uint8_t NB_CHORDS = 3;
 
 // Encoders:
-
-uint8_t encoderValue = 127;
 
 const uint8_t NB_ENCODERS = 2;
 
@@ -35,8 +38,10 @@ Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
 
 Encoder encoder[NB_ENCODERS] = {P1, P2};
+// Old state:
 int encoderPos[NB_ENCODERS] = {0, 0};
-int encoderState[NB_ENCODERS] = {1, 1};
+// New state:
+int encoderVal[NB_ENCODERS] = {0, 0};
 
 const uint8_t ENCODER_STEP = 4;
 
@@ -55,10 +60,8 @@ struct HairlessMidiSettings : public midi::DefaultSettings
 
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
-byte midiCC1 = 0;
-byte midiCC2 = 0;
-byte midiCC1Value = 63;
-byte midiCC2Value = 63;
+byte midiCC[2] = {91, 92};
+uint8_t midiCCValue[2] = {63, 63};
 // https://professionalcomposers.com/midi-cc-list/
 // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
 byte midiCCPresets[NB_PUSH] = {91, 92, 93, 94, 95, 98, 99, 100};
@@ -74,17 +77,17 @@ unsigned long lastClockPulse = 0;
 unsigned long lastNoteRepeat = 0;
 
 char* midiNote[128] = {
-  " C0 ", " C#0", " d0 ", " d#0", " E0 ", " F0 ", " F#0", " G0 ", " G#0", " A0 ", " A#0", " b0 ",
-  " C1 ", " C#1", " d1 ", " d#1", " E1 ", " F1 ", " F#1", " G1 ", " G#1", " A1 ", " A#1", " b1 ",
-  " C2 ", " C#2", " d2 ", " d#2", " E2 ", " F2 ", " F#2", " G2 ", " G#2", " A2 ", " A#2", " b2 ",
-  " C3 ", " C#3", " d3 ", " d#3", " E3 ", " F3 ", " F#3", " G3 ", " G#3", " A3 ", " A#3", " b3 ",
-  " C4 ", " C#4", " d4 ", " d#4", " E4 ", " F4 ", " F#4", " G4 ", " G#4", " A4 ", " A#4", " b4 ",
-  " C5 ", " CH5", " d5 ", " dH5", " E5 ", " F5 ", " FH5", " G5 ", " GH5", " A5 ", " AH5", " b5 ",
-  " C6 ", " CH6", " d6 ", " dH6", " E6 ", " F6 ", " FH6", " G6 ", " GH6", " A6 ", " AH6", " b6 ",
-  " C7 ", " CH7", " d7 ", " dH7", " E7 ", " F7 ", " FH7", " G7 ", " GH7", " A7 ", " AH7", " b7 ",
-  " C8 ", " CH8", " d8 ", " dH8", " E8 ", " F8 ", " FH8", " G8 ", " GH8", " A8 ", " AH8", " b8 ",
-  " C9 ", " CH9", " d9 ", " dH9", " E9 ", " F9 ", " FH9", " G9 ", " GH9", "A10 ", "AH10", "b10 ",
-  "C10 ", "CH10", "d10 ", "dH10", "E10 ", "F10 ", "FH10", "G10 ",
+  " C0 ", " d0b", " d0 ", " E0b", " E0 ", " F0 ", " F0b", " G0 ", " A0b", " A0 ", " b0b", " b0 ",
+  " C1 ", " d1b", " d1 ", " E1b", " E1 ", " F1 ", " F1b", " G1 ", " A1b", " A1 ", " b1b", " b1 ",
+  " C2 ", " d2b", " d2 ", " E2b", " E2 ", " F2 ", " F2b", " G2 ", " A2b", " A2 ", " b2b", " b2 ",
+  " C3 ", " d3b", " d3 ", " E3b", " E3 ", " F3 ", " F3b", " G3 ", " A3b", " A3 ", " b3b", " b3 ",
+  " C4 ", " d4b", " d4 ", " E4b", " E4 ", " F4 ", " F4b", " G4 ", " A4b", " A4 ", " b4b", " b4 ",
+  " C5 ", " d5b", " d5 ", " E5b", " E5 ", " F5 ", " F5b", " G5 ", " A5b", " A5 ", " b5b", " b5 ",
+  " C6 ", " d6b", " d6 ", " E6b", " E6 ", " F6 ", " F6b", " G6 ", " A6b", " A6 ", " b6b", " b6 ",
+  " C7 ", " d7b", " d7 ", " E7b", " E7 ", " F7 ", " F7b", " G7 ", " A7b", " A7 ", " b7b", " b7 ",
+  " C8 ", " d8b", " d8 ", " E8b", " E8 ", " F8 ", " F8b", " G8 ", " A8b", " A8 ", " b8b", " b8 ",
+  " C9 ", " d9b", " d9 ", " E9b", " E9 ", " F9 ", " G9b", " G9 ", " A9b", "A10 ", "b10b", "b10 ",
+  "C10 ", "d10b", "d10 ", "E0b", "E10 ", "F10 ", "G10b", "G10 ",
 };
 
 // LCD
@@ -96,13 +99,13 @@ SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Faders:
 
-uint16_t faderValue = 0;
-
 const uint8_t F1 = A6;
 const uint8_t F2 = A7;
 
 uint8_t faderPin[2] = {F1, F2};
-int faderPos[2] = {0, 0};
+const uint8_t NB_FADERS = 2;
+uint16_t faderPos[NB_FADERS] = {0, 0};
+uint16_t faderVal[NB_FADERS] = {0, 0};
 
 const uint16_t MAX_FADER_VALUE = 970;
 const uint16_t MIN_FADER_VALUE = 50;
@@ -137,16 +140,21 @@ const uint8_t SW_REPEAT = 1;
 const uint8_t SW_ULTRASONIC = 10;
 const uint8_t SW_PLAY = 11;
 
-const byte STOP_MASK =       B00000001;
-const byte CC_MASK =         B00000010;
-const byte REPEAT_MASK =     B00000100;
-const byte ULTRASONIC_MASK = B00001000;
+const byte INIT_MASK =       B00000010;
+const byte CC_MASK =         B00000100;
+const byte REPEAT_MASK =     B00001000;
+const byte ULTRASONIC_MASK = B00010000;
 
 byte currentPlayMode = B00000000;
 
-byte switches[4][2] = {{SW_CC, CC_MASK}, {SW_PLAY, STOP_MASK}, {SW_ULTRASONIC, ULTRASONIC_MASK}, {SW_REPEAT, REPEAT_MASK}};
+byte switches[4][2] = {
+  {SW_CC, CC_MASK},
+  {SW_PLAY, INIT_MASK},
+  {SW_ULTRASONIC, ULTRASONIC_MASK},
+  {SW_REPEAT, REPEAT_MASK}
+};
 
-// @todo: ajouter un bouton reset + save.
+// @todo: ajouter un bouton save (sd card).
 // @todo: ajouter un bouton pour voir les réglages (velo, note, cc) dans le lcd.
 
 bool midiCCIsActive = false;
@@ -156,7 +164,7 @@ bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 uint8_t rightPush = RELEASED;
 uint8_t leftPush = RELEASED;
-bool playButtonPressed = false;
+bool initButtonPressed = false;
 
 // MIDI
 
@@ -195,14 +203,28 @@ byte isPushed[NB_PUSH] = {
   RELEASED
 };
 unsigned long pushedTime[NB_PUSH] = {0,0,0,0,0,0,0,0};
-byte repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
+bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int selectedPushPin = -1;
 
-void reset() {
-  midiCC1 = 0;
-  midiCC2 = 0;
-  midiCC1Value = 63;
-  midiCC2Value = 63;
+// Chords
+// @see https://spinditty.com/learning/chord-building-for-musicians
+uint8_t chords[NB_CHORDS][7] = {
+  {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+  {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+  {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+};
+String chordsNames[NB_CHORDS] = {
+  "MAJ",
+  "MIN",
+  "AUG"
+};
+uint8_t selectedChord = UNASSIGNED;
+
+void reinit() {
+  midiCC[0] = 0;
+  midiCC[1] = 0;
+  midiCCValue[0] = 63;
+  midiCCValue[1] = 63;
   // https://professionalcomposers.com/midi-cc-list/
   // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
   midiCCPresets[0] = 91;
@@ -226,7 +248,7 @@ void reset() {
   encoderSwitch2isActive = false;
   rightPush = RELEASED;
   leftPush = RELEASED;
-  playButtonPressed = false;
+  initButtonPressed = false;
   repeatSpeedDividend = 1;
   repeatSpeedDivisor = 4;
   globalStartNote = 48;
@@ -252,6 +274,7 @@ void reset() {
   }
   selectedPushPin = -1;
   octave = 0;
+  selectedChord = UNASSIGNED;
 }
 
 void setup() {
@@ -298,27 +321,36 @@ void setup() {
 
   readSwitches();
 
-  // if (checkMode(STOP_MASK)) {
-  //   return;
-  // }
-
   // LCD:
   display.begin();
   display.print("P0AH");
   delay(1000);
-  if (checkMode(STOP_MASK)) {
+  if (checkMode(INIT_MASK)) {
     readSwitches();
-    if (checkMode(STOP_MASK)) {
+    if (checkMode(INIT_MASK)) {
       display.blink();
       readSwitches();
-      if (checkMode(STOP_MASK)) {
+      if (checkMode(INIT_MASK)) {
         display.print("P0AH PLAY");
         readSwitches();
-        if (checkMode(STOP_MASK)) {
+        if (checkMode(INIT_MASK)) {
           display.snake(2, 70);
         }
       }
     }
+  }
+}
+
+void testFaders() {
+  if (faderPos[0] != faderVal[0]) {
+    faderPos[0] = faderVal[0];
+    Serial.println(faderVal[0]);
+    Serial.println("Selected 1");
+  }
+  if (faderPos[1] != faderVal[1]) {
+    faderPos[1] = faderVal[1];
+    Serial.println(faderVal[1]);
+    Serial.println("Selected 2");
   }
 }
 
@@ -337,104 +369,194 @@ void loop() {
   readSwitches();
   updatePads();
 
-  // Maj des réglages de niveau 1 (faders + encoders):
-  if (checkMode(CC_MASK)) {
-    updateMidiControls();
+  for (int pos = 0; pos < NB_FADERS; pos++) {
+    faderVal[pos] = readFader(pos);
   }
-  else {
-    updateVelocityAndNotes();
-  }
-
-  // Maj des réglages de niveau 2 (symetric encoder push):
-  if (checkMode(REPEAT_MASK)) {
-    updateNoteRepeatSpeed();
-  }
-  else if (checkMode(ULTRASONIC_MASK)) {
-    updateUltrasonicSettings();
-  }
-  else if (checkMode(CC_MASK)) {
-    selectMidiControls();
-  }
-  else {
-    updateDefaultGlobalSettings();
+  for (int pos = 0; pos < NB_ENCODERS; pos++) {
+    encoderVal[pos] = readEncoder(pos); 
   }
 
-  // Maj des réglages de niveau 3 (play button):
-  if (!checkMode(STOP_MASK) && playFlag == false) {
-    // @todo send keyboard key press ?
-    // Serial.write(0XFA);
-    // MIDI.sendStop();
-    // displayPrintString("PLAY");
-    // Reset:
+  if (!checkMode(INIT_MASK) && !initButtonPressed) {
+    initButtonPressed = true;
     if (leftPush == PUSHED) {
-      displayPrintString("init");
-      reset();
+      displayPrint("init", false, true);
+      reinit();
+    }
+  }
+  else if (checkMode(INIT_MASK) && initButtonPressed == true) {
+    initButtonPressed = false;
+  }
+
+  // Init button
+  if (initButtonPressed == true) {
+    updateChannelFromEncoder(0);
+    updateBaseNoteFromEncoder(1);
+    return;
+  }
+
+  // Encoders et faders (sans encoder push)
+  if (checkMode(CC_MASK)) {
+    updateCCValueFromFader(0);
+    updateCCValueFromFader(1);
+    if (rightPush == RELEASED) {
+      updateMidiCCValueFromEncoder(0);
+    }
+    if (leftPush == RELEASED) {
+      updateMidiCCValueFromEncoder(1);
+    }
+  }
+  else {
+    updateVelocityFromFader(0);
+    updateOctaveFromFader(1);
+    if (rightPush == RELEASED) {
+      updateVelocityFromEncoder(0);
+    }
+    if (leftPush == RELEASED) {
+      updateOctaveFromEncoder(1);
     }
   }
 
-  // Maj des réglages de niveau 4 (pad lock):
-  if (checkMode(REPEAT_MASK)) {
-    updatePadsRepeatLock();
+  // Encoder push
+  if (checkMode(ULTRASONIC_MASK)) {
+    if (rightPush == PUSHED) {
+      updateUltrasonicCC(0);
+    }
+    if (leftPush == PUSHED) {
+      updateUltrasonicDistance(1);
+    }
+  }
+  else if (checkMode(REPEAT_MASK)) {
+    if (leftPush == PUSHED) {
+      updateNoteRepeatSpeedFromEncoder(1);
+      updatePadsRepeatLockUnlock(true);
+    }
+    if (rightPush == PUSHED) {
+      // @todo updateRepeatOctaveUpDown
+      updatePadsRepeatLockUnlock(false);
+    }
   }
   else if (checkMode(CC_MASK)) {
-    setCCPreset();
+    if (rightPush == PUSHED) {
+      updateMidiControlFromEncoder(0);
+      selectCCPreset(0);
+    }
+    if (leftPush == PUSHED) {
+      updateMidiControlFromEncoder(1);
+      selectCCPreset(1);
+    }
   }
   else {
-    updatePadsLock();
+    // chords and scales
+    // chordAndScaleSelect();
+    if (rightPush == PUSHED) {
+      updatePadsLock(true);
+    }
+    if (leftPush == PUSHED) {
+      updatePadsLock(false);
+    }
+  }
+
+  if (checkMode(ULTRASONIC_MASK)) {
+    trackUltrasonicChanges();
   }
 }
 
-void updateDefaultGlobalSettings() {
-  encoderValue = readEncoder(0);
-  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
-    int newMidiChannel = getMidiValueFromEncoder(midiChannel, encoderValue, encoderPos[0]);
-    midiChannel = newMidiChannel > 16 ? 17 : newMidiChannel;
-    displayPrintString("CH" + String(midiChannel));
-    encoderPos[0] = encoderValue;
-  }
-  encoderValue = readEncoder(1);
-  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
-    programChange = getMidiValueFromEncoder(programChange, encoderValue, encoderPos[1]);
-    MIDI.sendProgramChange(programChange, midiChannel);
-    displayPrintString("P" + String(programChange));
-    encoderPos[1] = encoderValue;
-  }
-}
-
-void updateVelocityAndNotes() {
-
-  // @todo note presets + gammes
-
-  faderValue = readFader(0);
-  if (faderValue != faderPos[0] && rightPush == RELEASED) {
-    faderPos[0] = faderValue;
-    uint8_t newMidiValue = getMidiValueFromFader(faderPos[0]);
-    updateVelocity(newMidiValue, newMidiValue);
-  }
-
-  faderValue = readFader(1);
-  if (faderValue != faderPos[1] && leftPush == RELEASED) {
-    // float pitchBend = getPitchModulationFromfader(faderValue);
-    // MIDI.sendPitchBend(0.5f, midiChannel);
-    // displayPrintFloat(pitchBend);
-    setOctaveFromFader(faderValue);
-    faderPos[1] = faderValue;
-  }
-
-  encoderValue = readEncoder(0);
-  if (rightPush == RELEASED && encoderValue != encoderPos[0]) {
-    updateVelocity(
-      getMidiValueFromEncoder(globalVelocity, encoderValue, encoderPos[0]),
-      getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderValue, encoderPos[0])
+void updateChannelFromEncoder(uint8_t selected) {
+  if (encoderVal[selected] != encoderPos[selected]) {
+    int newMidiChannel = getMidiValueFromEncoder(
+      midiChannel,
+      encoderVal[selected],
+      encoderPos[selected]
     );
-    encoderPos[0] = encoderValue;
+    midiChannel = newMidiChannel > 15 ? 16 : newMidiChannel;
+    display.clear();
+    display.setColonOn(false);
+    display.print("CH" + String(midiChannel));
+    encoderPos[selected] = encoderVal[selected];
   }
-  encoderValue = readEncoder(1);
-  if (leftPush == RELEASED && encoderValue != encoderPos[1]) {
-    bool direction = encoderValue > encoderPos[1];
-    moveOctave(direction);
-    encoderPos[1] = encoderValue;
+}
+
+void updateBaseNoteFromEncoder(uint8_t selected) {
+  if (encoderVal[selected] != encoderPos[selected]) {
+    updateNotes(
+      (getMidiValueFromEncoder(60+globalNoteOffset, encoderVal[selected], encoderPos[selected]) - 60),
+      getMidiValueFromEncoder(pushNote[selectedPushPin], encoderVal[selected], encoderPos[selected])
+    );
   }
+  encoderPos[selected] = encoderVal[selected];
+}
+
+void chordAndScaleSelect() {
+  // encoderVal[selected] = readEncoder(0);
+  // if (rightPush == PUSHED && encoderVal[selected] != encoderPos[0]) {
+  //   // Scale:
+  //   encoderPos[0] = encoderVal[selected];
+  // }
+  // encoderVal[selected] = readEncoder(1);
+  // if (leftPush == PUSHED && encoderVal[selected] != encoderPos[1]) {
+  //   // Chord:
+  //   if (encoderVal[selected] > encoderPos[1]) {
+  //     if (selectedChord == UNASSIGNED) {
+  //       selectedChord = 0;
+  //     }
+  //     else {
+  //       selectedChord = selectedChord >= NB_CHORDS ? NB_CHORDS - 1 : selectedChord + 1;
+  //     }
+  //   }
+  //   else if (selectedChord != UNASSIGNED) {
+  //     selectedChord = selectedChord > 0 ? selectedChord - 1 : UNASSIGNED;
+  //   }
+  //   if (selectedChord == UNASSIGNED) {
+  //     displayPrintString("NOTE");
+  //   }
+  //   else {
+  //     displayPrintString(chordsNames[selectedChord]);
+  //   }
+  //   encoderPos[1] = encoderVal[selected];
+  // }
+}
+
+void updateOctaveFromFader(uint8_t selected) {
+  if (faderVal[selected] == faderPos[selected]) {
+    return;
+  }
+  int relativeValue = (faderVal[selected] - 1024) * (-1);
+  if (relativeValue >= MAX_FADER_VALUE) {
+    relativeValue = 1024;
+  }
+  if (relativeValue <= MIN_FADER_VALUE) {
+    relativeValue = 0;
+  }
+  octave = round(relativeValue / 100) - 4;
+  display.clear();
+  if (octave >= 0) {
+    display.print(String(octave) + "oct");
+  }
+  else {
+    display.print(String(octave) + "oc");
+  }
+  globalNoteOffset = octave * 12;
+  faderPos[selected] = faderVal[selected];
+}
+
+void updateVelocityFromEncoder(uint8_t selected) { 
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+  updateVelocity(
+    getMidiValueFromEncoder(globalVelocity, encoderVal[selected], encoderPos[selected]),
+    getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderVal[selected], encoderPos[selected])
+  );
+  encoderPos[selected] = encoderVal[selected];
+}
+
+void updateOctaveFromEncoder(uint8_t selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+  bool direction = encoderVal[selected] > encoderPos[selected];
+  moveOctave(direction);
+  encoderPos[selected] = encoderVal[selected];
 }
 
 bool updateMidiSerial() {
@@ -450,26 +572,22 @@ bool updateMidiSerial() {
   if (serialByte == MIDI_CONTINUE) {
     playFlag = true;
     startTime += micros() - stopTime;
-    display.clear();
-    display.print("CONT");
+    displayPrint("CONT", false, true);
   }
   if (serialByte == MIDI_START) {
     playFlag = true;
     startTime = loopTime - MIDI_START_OFFSET;
     nbElapsedNotes = 0;
-    display.clear();
-    display.print("PLAY");
+    displayPrint("PLAY", false, true);
   }
   if (serialByte == MIDI_STOP) {
     playFlag = false;
     stopTime = micros();
-    display.clear();
-    display.print("STOP");
+    displayPrint("STOP", false, true);
   }
   if (serialByte == MIDI_SONG_POSITION_POINTER) {
     // @todo.
-    display.clear();
-    display.print("POS");
+    displayPrint("POS", false, true);
     // serialByte = Serial.read();
     // byte serialByte2 = Serial.read();
     // delay(1000);
@@ -504,46 +622,25 @@ void playPush(uint8_t pin, bool state) {
     currentVelocity = globalVelocity;
     currentNote += globalNoteOffset;
   }
-  if (state) {
-    MIDI.sendNoteOn(currentNote, currentVelocity, midiChannel);
-    digitalWrite(LED_BUILTIN, HIGH);
-    digitalWrite(MAGNET, HIGH);
+  sendNote(currentNote, currentVelocity, state);
+}
+
+byte getMidiValueFromFader(uint8_t selected) {
+  if (faderVal[selected] >= MAX_FADER_VALUE) {
+    faderVal[selected] = 1024;
+  }
+  if (faderVal[selected] <= MIN_FADER_VALUE) {
+    faderVal[selected] = 0;
+  }
+  return ((uint32_t) faderVal[selected] * 127) / 1024;
+}
+
+float getPitchModulationFromfader(uint8_t selected) {
+  if (faderVal[selected] > 512) {
+    return (float) (faderVal[selected] - 512) / 512;
   }
   else {
-    MIDI.sendNoteOff(currentNote, currentVelocity, midiChannel);
-    digitalWrite(LED_BUILTIN, LOW);
-    digitalWrite(MAGNET, LOW);
-  }
-}
-
-uint16_t getMidiValueFromFader(unsigned long faderValue) {
-  if (faderValue >= MAX_FADER_VALUE) {
-    faderValue = 1024;
-  }
-  if (faderValue <= MIN_FADER_VALUE) {
-    faderValue = 0;
-  }
-  return 127 - ((faderValue * 127) / 1024);
-}
-
-void setOctaveFromFader(unsigned long faderValue) {
-  if (faderValue >= MAX_FADER_VALUE) {
-    faderValue = 1024;
-  }
-  if (faderValue <= MIN_FADER_VALUE) {
-    faderValue = 0;
-  }
-  octave = (faderValue / 100) - 4;
-  octave > 0 ? displayPrintString(String(octave) + "oct") : displayPrintString(String(octave) + "oc");
-  globalNoteOffset = octave * 12;
-}
-
-float getPitchModulationFromfader(uint16_t faderValue) {
-  if (faderValue > 512) {
-    return (float) (faderValue - 512) / 512;
-  }
-  else {
-    return (float) faderValue / 512 * -1;
+    return (float) faderVal[selected] / 512 * -1;
   }
 }
 
@@ -563,19 +660,22 @@ char* getNoteFromMidiValue(uint8_t midiValue) {
   return midiNote[midiValue];
 }
 
-int readFader(uint8_t f) {
-  int faderValue = analogRead(faderPin[f]);
-  if (faderValue > faderPos[f] + FADER_THRESHOLD || faderValue < faderPos[f] - FADER_THRESHOLD) {
-    if (faderValue >= MAX_FADER_VALUE) {
+int readFader(uint8_t selected) {
+  faderVal[selected] = analogRead(faderPin[selected]);
+  if (
+    faderVal[selected] > faderPos[selected] + FADER_THRESHOLD ||
+    faderVal[selected] < faderPos[selected] - FADER_THRESHOLD
+  ) {
+    if (faderVal[selected] >= MAX_FADER_VALUE) {
       return 1024;
     }
-    else if (faderValue <= MIN_FADER_VALUE) {
+    else if (faderVal[selected] <= MIN_FADER_VALUE) {
       return 0;
     }
-    return faderValue;
+    return faderVal[selected];
   }
   else {
-    return faderPos[f];
+    return faderPos[selected];
   }
 }
 
@@ -592,12 +692,16 @@ int readEncoder(uint8_t e) {
 void updateVelocity(uint8_t globalMidiValue, uint8_t localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
-    displayPrintString("v" + String(localMidiValue));
+    display.clear();
+    display.print('v');
+    displayPrint(localMidiValue, false, false);
   }
   else {
     globalVelocity = globalMidiValue;
     pushVelocity[selectedPushPin] = globalVelocity;
-    displayPrintString("v" + String(globalVelocity));
+    display.clear();
+    display.print('v');
+    displayPrint(globalVelocity, false, false);
   }
 }
 
@@ -606,14 +710,14 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
     pushNote[selectedPushPin] = localMidiOffset;
     if (pushNote[selectedPushPin] < 0) { pushNote[selectedPushPin] = 0; }
     char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
-    displayPrintChar(note);
+    displayPrint(note, false, true);
   }
   else {
     globalNoteOffset = globalMidiOffset;
     if (60+globalNoteOffset < 0) { globalNoteOffset = -60; }
     if (60+globalNoteOffset > 127) { globalNoteOffset = 67; }
     char* note = getNoteFromMidiValue(60+globalNoteOffset);
-    displayPrintChar(note);
+    displayPrint(note, false, true);
   }
 }
 
@@ -630,50 +734,50 @@ void moveOctave(bool up) {
   else {
     octave--;
   }
-  octave > 0 ? displayPrintString(String(octave) + "oct") : displayPrintString(String(octave) + "oc");
+  display.clear();
+  if (octave >= 0) {
+    display.print(String(octave) + "oct");
+  }
+  else {
+    display.print(String(octave) + "oc");
+  }
+  display.setColonOn(false);
   globalNoteOffset = octave * 12;
 }
 
-void updatePadsLock() {
+void updatePadsLock(bool lock) {
+
   for (uint8_t p = 0; p < NB_PUSH; p++) {
 
-    mux.channel(pushPin[p]);
-    uint8_t sensorVal = digitalRead(MUXSIG);
-    if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
-      if (leftPush == PUSHED) {
+    if (isPushed[p] == PUSHED) {
+      display.clear();
+      if (lock == false) {
         pushSettingsLocked[p] = true;
-        displayPrintString("PAd" + String(p+1));
+        display.print("PAd" + String(p+1));
       }
-      else if (rightPush == PUSHED) {
+      else {
         pushSettingsLocked[p] = false;
-        displayPrintString("Glob");
+        display.print("GL0b");
       }
-      else if (selectedPushPin != p && pushSettingsLocked[p] == true) {
-        displayPrintInt(pushVelocity[p]);
-      }
-      else if (selectedPushPin != p && pushSettingsLocked[p] == false) {
-        displayPrintInt(globalVelocity);
-      }
+      display.setColonOn(false);
     }
   }
 }
 
-void updatePadsRepeatLock() {
+void updatePadsRepeatLockUnlock(bool isLocked) {
 
   for (uint8_t p = 0; p < NB_PUSH; p++) {
-
-    mux.channel(pushPin[p]);
-    uint8_t sensorVal = digitalRead(MUXSIG);
-
-    if (leftPush == PUSHED && sensorVal == PUSHED && repeatIsLocked[p] == false) {
-      repeatIsLocked[p] = true;
-      displayPrintString("LoK" + String(p+1));
+    if (isPushed[p] == RELEASED) {
+      continue;
     }
-    else if (rightPush == PUSHED && sensorVal == PUSHED && repeatIsLocked[p] == true) {
-      isPushed[p] = RELEASED;
-      repeatIsLocked[p] = false;
+    if (isLocked == false) {
       displayPrintString("ULoK");
+      isPushed[p] = RELEASED;
     }
+    else {
+      displayPrintString("Lock");
+    }
+    repeatIsLocked[p] = isLocked;
   }
 }
 
@@ -789,7 +893,7 @@ void updateBpm() {
     unsigned long newBpm = 60000000/quarterNoteTime;
     if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
       bpm = newBpm;
-      displayPrintInt(bpm);
+      // displayPrintInt(bpm);
       oneNoteTime = getNoteMicros();
       startTime = startTime * (bpm / newBpm);
       // @todo send stop play.
@@ -822,59 +926,54 @@ void readSwitches() {
   rightPush = digitalRead(MUXSIG);
 }
 
-void selectMidiControls() {
-  if (leftPush == PUSHED) {
-    encoderValue = readEncoder(1);
-    if (encoderValue != encoderPos[1]) {
-      midiCC1 = getMidiValueFromEncoder(midiCC1, encoderValue, encoderPos[1]);
-      encoderPos[1] = encoderValue;
-      displayPrintString("C" + String(midiCC1));
-    }
-  }
-  if (rightPush == PUSHED) {
-    encoderValue = readEncoder(0);
-    if (encoderValue != encoderPos[0]) {
-      midiCC2 = getMidiValueFromEncoder(midiCC2, encoderValue, encoderPos[0]);
-      displayPrintString("C" + String(midiCC2));
-      encoderPos[0] = encoderValue;
-    }
+void updateMidiControlFromEncoder(uint8_t selected) {
+  if (encoderVal[selected] != encoderPos[selected]) {
+    midiCC[selected] = getMidiValueFromEncoder(midiCC[selected], encoderVal[selected], encoderPos[selected]);
+    encoderPos[selected] = encoderVal[selected];
+    display.clear();
+    display.print('C');
+    displayPrint(midiCC[selected], false, false);
   }
 }
 
-void updateMidiControls() {
-
-  encoderValue = readEncoder(0);
-  if (rightPush == RELEASED && encoderValue != encoderPos[0]) {
-    midiCC1Value = getMidiValueFromEncoder(midiCC1Value, encoderValue, encoderPos[0]);
-    MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-    encoderPos[0] = encoderValue;
-    displayPrintString("c" + String(midiCC1Value));
+void updateMidiCCValueFromEncoder(uint8_t selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
   }
-  encoderValue = readEncoder(1);
-  if (leftPush == RELEASED && encoderValue != encoderPos[1]) {
-    midiCC2Value = getMidiValueFromEncoder(midiCC2Value, encoderValue, encoderPos[1]);
-    MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-    encoderPos[1] = encoderValue;
-    displayPrintString("c" + String(midiCC2Value));
-  }
-
-  faderValue = readFader(0);
-  if (faderValue != faderPos[0]) {
-    faderPos[0] = faderValue;
-    midiCC1Value = getMidiValueFromFader(faderPos[0]);
-    MIDI.sendControlChange(midiCC1, midiCC1Value, midiChannel);
-    displayPrintString("c" + String(midiCC1Value));
-  }
-  faderValue = readFader(1);
-  if (faderValue != faderPos[1]) {
-    faderPos[1] = faderValue;
-    midiCC2Value = getMidiValueFromFader(faderPos[1]);
-    MIDI.sendControlChange(midiCC2, midiCC2Value, midiChannel);
-    displayPrintString("c" + String(midiCC2Value));
-  }
+  midiCCValue[selected] = getMidiValueFromEncoder(
+    midiCCValue[selected],
+    encoderVal[selected],
+    encoderPos[selected]
+  );
+  MIDI.sendControlChange(midiCC[selected], midiCCValue[selected], midiChannel);
+  encoderPos[selected] = encoderVal[selected];
+  display.clear();
+  display.print('c');
+  displayPrint(midiCCValue[selected], false, false);
 }
 
-void updateNoteRepeatSpeed() {
+void updateCCValueFromFader(uint8_t selected) {
+  if (faderVal[selected] == faderPos[selected]) {
+    return;
+  }
+  faderPos[selected] = faderVal[selected];
+  midiCCValue[selected] = getMidiValueFromFader(selected);
+  MIDI.sendControlChange(midiCC[selected], midiCCValue[selected], midiChannel);
+  display.clear();
+  display.print('c');
+  displayPrint(midiCCValue[selected], false, false);
+}
+
+void updateVelocityFromFader(uint8_t selected) {
+  if (faderVal[selected] == faderPos[selected]) {
+    return;
+  }
+  faderPos[selected] = faderVal[selected];
+  uint16_t newMidiValue = getMidiValueFromFader(selected);
+  updateVelocity(newMidiValue, newMidiValue);
+}
+
+void updateNoteRepeatSpeedFromEncoder(uint8_t selected) {
 
   bool changed = false;
   uint8_t tmpRepeatSpeedDivisor = repeatSpeedDivisor;
@@ -882,14 +981,13 @@ void updateNoteRepeatSpeed() {
     tmpRepeatSpeedDivisor = pushRepeatSpeed[selectedPushPin][1];
   }
 
-  encoderValue = readEncoder(1);
-  if (encoderValue != encoderPos[1]) {
-    tmpRepeatSpeedDivisor = tmpRepeatSpeedDivisor + encoderValue - encoderPos[1];
+  if (encoderVal[selected] != encoderPos[selected]) {
+    tmpRepeatSpeedDivisor = tmpRepeatSpeedDivisor + encoderVal[selected] - encoderPos[selected];
     if (tmpRepeatSpeedDivisor > 64) {
       tmpRepeatSpeedDivisor = 64;
     }
     if (tmpRepeatSpeedDivisor < 1) { tmpRepeatSpeedDivisor = 1; }
-    encoderPos[1] = encoderValue;
+    encoderPos[selected] = encoderVal[selected];
     changed = true;
   }
   if (changed) {
@@ -905,19 +1003,28 @@ void updateNoteRepeatSpeed() {
   }
 }
 
-void updateUltrasonicSettings() {
-  encoderValue = readEncoder(0);
-  if (rightPush == PUSHED && encoderValue != encoderPos[0]) {
-    ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderValue, encoderPos[0]);
-    displayPrintString("C" + String(ultrasonicCC));
-    encoderPos[0] = encoderValue;
+// @todo debug why slow.
+void updateUltrasonicCC(uint8_t selected) {
+  if (encoderVal[selected] != encoderPos[selected]) {
+    ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderVal[selected], encoderPos[selected]);
+    display.clear();
+    display.print('C');
+    displayPrint(ultrasonicCC, false, false);
+    encoderPos[selected] = encoderVal[selected];
   }
-  encoderValue = readEncoder(1);
-  if (leftPush == PUSHED && encoderValue != encoderPos[1]) {
-    maxUltrasonicDistanceCm = maxUltrasonicDistanceCm + (encoderValue - encoderPos[1]);
-    displayPrintString("d" + String(maxUltrasonicDistanceCm));
-    encoderPos[1] = encoderValue;
+}
+
+void updateUltrasonicDistance(uint8_t selected) {
+  if (encoderVal[selected] != encoderPos[selected]) {
+    maxUltrasonicDistanceCm = maxUltrasonicDistanceCm + (encoderVal[selected] - encoderPos[selected]);
+    display.clear();
+    display.print('d');
+    displayPrint(maxUltrasonicDistanceCm, false, false);
+    encoderPos[selected] = encoderVal[selected];
   }
+}
+
+void trackUltrasonicChanges() {
   uint8_t distance = distanceSensor.measureDistanceCm();
   distance = distance > maxUltrasonicDistanceCm ? maxUltrasonicDistanceCm : distance;
   distance = distance < MIN_ULTRASONIC_DISTANCE_CM ? MIN_ULTRASONIC_DISTANCE_CM : distance;
@@ -926,25 +1033,30 @@ void updateUltrasonicSettings() {
   MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
 }
 
-void setCCPreset() {
+void selectCCPreset(uint8_t selected) {
+
   for (uint8_t p = 0; p < NB_PUSH; p++) {
 
-    mux.channel(pushPin[p]);
-    uint8_t sensorVal = digitalRead(MUXSIG);
-
-    if (sensorVal == RELEASED) {
+    if (isPushed[p] == RELEASED || repeatIsLocked[p] == true) {
       continue;
     }
 
-    if (leftPush == PUSHED) {
-      midiCC1 = midiCCPresets[p];
-      displayPrintString("P" + String(midiCCPresets[p]));
-    }
-    else if (rightPush == PUSHED) {
-      midiCC2 = midiCCPresets[p];
-      displayPrintString("P" + String(midiCCPresets[p]));
-    }
+    midiCC[selected] = midiCCPresets[p];
+    // Problème d'affichage
+    display.clear();
+    display.print('P');
+    displayPrint(midiCCPresets[p], false, false);
   }
+}
+
+void displayPrint(const char string[], bool semicolon, bool clear) {
+  prepareDisplay(semicolon, clear);
+  display.print(string);
+}
+
+void displayPrint(int string, bool semicolon, bool clear) {
+  prepareDisplay(semicolon, clear);
+  display.print(string);
 }
 
 void displayPrintString(String s) {
@@ -953,24 +1065,41 @@ void displayPrintString(String s) {
   display.print(s);
 }
 
-void displayPrintInt(int i) {
-  display.setColonOn(false);
-  display.clear();
-  display.print(i);
-}
-
-void displayPrintChar(char* c) {
-  display.setColonOn(false);
-  display.clear();
-  display.print(c);
-}
-
-void displayPrintFloat(float f) {
-  display.setColonOn(false);
-  display.clear();
-  display.print(f);
+void prepareDisplay(bool semicolon, bool clear) {
+  semicolon ? display.setColonOn(true) : display.setColonOn(false);
+  if (clear) {
+    display.clear();
+  }
 }
 
 bool checkMode(byte mask) {
   return ((currentPlayMode & mask) == mask);
+}
+
+void sendNote(uint8_t note, uint8_t velocity, bool on) {
+  if (on) {
+    selectedChord != UNASSIGNED && note < 128 ?
+      sendChord(selectedChord, note, velocity, on) :
+      MIDI.sendNoteOn(note, velocity, midiChannel);
+    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(MAGNET, HIGH);
+  }
+  else {
+    selectedChord != UNASSIGNED && note < 128 ?
+      sendChord(selectedChord, note, velocity, on):
+      MIDI.sendNoteOff(note, velocity, midiChannel);
+    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(MAGNET, LOW);
+  }
+}
+
+void sendChord(uint8_t chord, uint8_t noteStart, uint8_t velocity, bool on) {
+  uint8_t offset = 0;
+  do {
+    on ?
+      MIDI.sendNoteOn(noteStart + chords[chord][offset], velocity, midiChannel):
+      MIDI.sendNoteOff(noteStart + chords[chord][offset], velocity, midiChannel);
+    offset++;
+  }
+  while (chords[chord][offset] != UNASSIGNED && selectedChord == chord);
 }
