@@ -970,6 +970,10 @@ void updateVelocityFromFader(byte selected) {
 
 void updateNoteRepeatSpeedFromEncoder(byte selected) {
 
+  if (aPadIsPushed()) {
+    return;
+  }
+
   bool changed = false;
   byte tmpRepeatSpeedDivisor = repeatSpeedDivisor;
   if (pushSettingsLocked[selectedPushPin]) {
@@ -1096,4 +1100,13 @@ void sendNote(byte note, byte velocity, bool on) {
     digitalWrite(LED_BUILTIN, LOW);
     digitalWrite(MAGNET, LOW);
   }
+}
+
+bool aPadIsPushed() {
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (isPushed[p] == PUSHED) {
+      return true;
+    }
+  }
+  return false;
 }
