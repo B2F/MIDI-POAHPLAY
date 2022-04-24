@@ -10,31 +10,28 @@
 #include <light_CD74HC4067.h>
 #include <HCSR04.h>
 
-const unsigned long BAUD_RATE = 38400;
+const unsigned long BAUD_RATE PROGMEM = 38400;
 
 // Misc
 
-const byte UNASSIGNED = 255;
+const byte UNASSIGNED PROGMEM = 255;
 
 // Push buttons:
 
-const byte PUSHED = LOW;
-const byte RELEASED = HIGH;
-const byte NB_PUSH = 8;
-// Including NOTE (no chord).
-const byte NB_CHORDS = 4;
-const byte MAX_NOTES = 7;
+const byte PUSHED PROGMEM = LOW;
+const byte RELEASED PROGMEM = HIGH;
+const byte NB_PUSH PROGMEM = 8;
 
 // Encoders:
 
-const byte NB_ENCODERS = 2;
+const byte NB_ENCODERS PROGMEM = 2;
 
-const byte P1CLK = 2;
-const byte P1DT = 4;
-const byte P1SW = 15;
-const byte P2CLK = 3;
-const byte P2DT = 5;
-const byte P2SW = 14;
+const byte P1CLK PROGMEM = 2;
+const byte P1DT PROGMEM = 4;
+const byte P1SW PROGMEM = 15;
+const byte P2CLK PROGMEM = 3;
+const byte P2DT PROGMEM = 5;
+const byte P2SW PROGMEM = 14;
 
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
@@ -45,11 +42,11 @@ int encoderPos[NB_ENCODERS] = {0, 0};
 // New state:
 int encoderVal[NB_ENCODERS] = {0, 0};
 
-const byte ENCODER_STEP = 4;
+const byte ENCODER_STEP PROGMEM = 4;
 
 // Multiplexer
 
-const byte MUXSIG = A0;
+const byte MUXSIG PROGMEM = A0;
 CD74HC4067 mux(A1, A2, A3, A4);
 
 // MIDI
@@ -66,46 +63,32 @@ byte midiCC[2] = {91, 92};
 byte midiCCValue[2] = {63, 63};
 // https://professionalcomposers.com/midi-cc-list/
 // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
-byte midiCCPresets[NB_PUSH] = {91, 92, 93, 94, 95, 98, 99, 100};
+const byte midiCCPresets[NB_PUSH] PROGMEM = {91, 92, 93, 94, 95, 98, 99, 100};
 byte midiChannel = 2;
 byte programChange = 0;
 byte globalVelocity = 127;
 int globalNoteOffset = 0;
-byte ticksPerNote = 96;
+const byte ticksPerNote PROGMEM = 96;
 unsigned long startTime = 0;
 long nbElapsedNotes = 0;
-const int MIDI_START_OFFSET = 0;
+const int MIDI_START_OFFSET PROGMEM = 0;
 unsigned long lastClockPulse = 0;
 unsigned long lastNoteRepeat = 0;
 
-char* midiNote[128] = {
-  " C0 ", " d0b", " d0 ", " E0b", " E0 ", " F0 ", " F0b", " G0 ", " A0b", " A0 ", " b0b", " b0 ",
-  " C1 ", " d1b", " d1 ", " E1b", " E1 ", " F1 ", " F1b", " G1 ", " A1b", " A1 ", " b1b", " b1 ",
-  " C2 ", " d2b", " d2 ", " E2b", " E2 ", " F2 ", " F2b", " G2 ", " A2b", " A2 ", " b2b", " b2 ",
-  " C3 ", " d3b", " d3 ", " E3b", " E3 ", " F3 ", " F3b", " G3 ", " A3b", " A3 ", " b3b", " b3 ",
-  " C4 ", " d4b", " d4 ", " E4b", " E4 ", " F4 ", " F4b", " G4 ", " A4b", " A4 ", " b4b", " b4 ",
-  " C5 ", " d5b", " d5 ", " E5b", " E5 ", " F5 ", " F5b", " G5 ", " A5b", " A5 ", " b5b", " b5 ",
-  " C6 ", " d6b", " d6 ", " E6b", " E6 ", " F6 ", " F6b", " G6 ", " A6b", " A6 ", " b6b", " b6 ",
-  " C7 ", " d7b", " d7 ", " E7b", " E7 ", " F7 ", " F7b", " G7 ", " A7b", " A7 ", " b7b", " b7 ",
-  " C8 ", " d8b", " d8 ", " E8b", " E8 ", " F8 ", " F8b", " G8 ", " A8b", " A8 ", " b8b", " b8 ",
-  " C9 ", " d9b", " d9 ", " E9b", " E9 ", " F9 ", " G9b", " G9 ", " A9b", "A10 ", "b10b", "b10 ",
-  "C10 ", "d10b", "d10 ", "E0b", "E10 ", "F10 ", "G10b", "G10 ",
-};
-
 // LCD
 
-const byte LCD_CLK = 12;
-const byte LCD_DIO = 11;
+const byte LCD_CLK PROGMEM = 12;
+const byte LCD_DIO PROGMEM = 11;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Faders:
 
-const byte F1 = A6;
-const byte F2 = A7;
+const byte F1 PROGMEM = A6;
+const byte F2 PROGMEM = A7;
 
-byte faderPin[2] = {F1, F2};
-const byte NB_FADERS = 2;
+const byte faderPin[2] PROGMEM = {F1, F2};
+const byte NB_FADERS PROGMEM = 2;
 uint16_t faderPos[NB_FADERS] = {0, 0};
 uint16_t faderVal[NB_FADERS] = {0, 0};
 
@@ -115,15 +98,15 @@ const uint16_t FADER_THRESHOLD = 30;
 
 // Leds:
 
-const byte L1 = 10;
-const byte L2 = 9;
-const byte L3 = 8;
-const byte L4 = 7;
+const byte L1 PROGMEM = 10;
+const byte L2 PROGMEM = 9;
+const byte L3 PROGMEM = 8;
+const byte L4 PROGMEM = 7;
 
 // Ultrasonic
 
-const byte triggerPin = 13;
-const byte echoPin = 6;
+const byte triggerPin PROGMEM = 13;
+const byte echoPin PROGMEM = 6;
 
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
@@ -133,19 +116,19 @@ byte ultrasonicCC = 100;
 
 // Magnet
 
-const byte MAGNET = A5;
+const byte MAGNET PROGMEM = A5;
 
 // Switches
 
-const byte SW_CC = 0;
-const byte SW_REPEAT = 1;
-const byte SW_ULTRASONIC = 10;
-const byte SW_PLAY = 11;
+const byte SW_CC PROGMEM = 0;
+const byte SW_REPEAT PROGMEM = 1;
+const byte SW_ULTRASONIC PROGMEM = 10;
+const byte SW_PLAY PROGMEM = 11;
 
-const byte INIT_MASK =       B00000010;
-const byte CC_MASK =         B00000100;
-const byte REPEAT_MASK =     B00001000;
-const byte ULTRASONIC_MASK = B00010000;
+const byte INIT_MASK PROGMEM =       B00000010;
+const byte CC_MASK PROGMEM =         B00000100;
+const byte REPEAT_MASK PROGMEM =     B00001000;
+const byte ULTRASONIC_MASK PROGMEM = B00010000;
 
 byte currentPlayMode = B00000000;
 
@@ -187,7 +170,7 @@ unsigned long oneNoteTime = 0;
 unsigned long stopTime = 0;
 int octave = 0;
 
-byte pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
+const byte pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
@@ -209,37 +192,20 @@ bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false,
 int selectedPushPin = -1;
 
 // Chords
-// @see https://spinditty.com/learning/chord-building-for-musicians
-byte chords[NB_CHORDS][MAX_NOTES] = {
-  {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-  {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-  {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-  {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-};
-char* chordsNames[NB_CHORDS] = {
-  // NOTE <=> no chord.
-  "NOTE",
-  "MAJ",
-  "MIN",
-  "AUG"
-};
+// Including NOTE (no chord).
+const byte NB_CHORDS PROGMEM = 4;
+const byte MAX_NOTES PROGMEM = 8;
 byte selectedChord = 0;
+
+// Scales
+const byte NB_SCALES PROGMEM = 5;
+byte selectedScale = 0;
 
 void reinit() {
   midiCC[0] = 0;
   midiCC[1] = 0;
   midiCCValue[0] = 63;
   midiCCValue[1] = 63;
-  // https://professionalcomposers.com/midi-cc-list/
-  // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
-  midiCCPresets[0] = 91;
-  midiCCPresets[1] = 92;
-  midiCCPresets[2] = 93;
-  midiCCPresets[3] = 94;
-  midiCCPresets[4] = 95;
-  midiCCPresets[5] = 98;
-  midiCCPresets[6] = 99;
-  midiCCPresets[7] = 100;
   midiChannel = 2;
   programChange = 0;
   globalVelocity = 127;
@@ -453,10 +419,11 @@ void loop() {
   else {
     // chords and scales
     if (rightPush == PUSHED) {
+      scaleSelect(0);
       updatePadsLock(true);
     }
     if (leftPush == PUSHED) {
-      chordAndScaleSelect(1);
+      chordSelect(1);
       updatePadsLock(false);
     }
   }
@@ -491,7 +458,15 @@ void updateBaseNoteFromEncoder(byte selected) {
   encoderPos[selected] = encoderVal[selected];
 }
 
-void chordAndScaleSelect(byte selected) {
+void chordSelect(byte selected) {
+
+  String CHORDS_NAMES[NB_CHORDS] = {
+    // NOTE <=> no chord.
+    "NOTE",
+    "MAJ",
+    "MIN",
+    "AUG"
+  };
 
   encoderVal[selected] = readEncoder(selected);
   if (encoderVal[selected] == encoderPos[selected]) {
@@ -506,7 +481,7 @@ void chordAndScaleSelect(byte selected) {
     selectedChord = selectedChord > 0 ? selectedChord - 1 : 0;
   }
   display.clear();
-  display.print(chordsNames[selectedChord]);
+  display.print(CHORDS_NAMES[selectedChord]);
   display.setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
 }
@@ -610,13 +585,59 @@ void writeLeds(byte s1, byte s2, byte s3, byte s4) {
   }
 }
 
+void scaleSelect(byte selected) {
+
+  char* SCALES_NAMES[NB_SCALES] = {
+    "SEMI",
+    "MAJ",
+    "MIN_",
+    "BLUE",
+    "BLU_"
+  };
+
+  encoderVal[selected] = readEncoder(selected);
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  // @todo mutualiser la logique de sélection avec chords:
+  // Scale:
+  if (encoderVal[selected] > encoderPos[selected]) {
+    selectedScale = selectedScale < (NB_SCALES-1) ? selectedScale+1 : selectedScale;
+  }
+  else if (selectedScale > 0) {
+    selectedScale = selectedScale > 0 ? selectedScale - 1 : 0;
+  }
+  display.clear();
+  display.print(SCALES_NAMES[selectedScale]);
+  display.setColonOn(false);
+  encoderPos[selected] = encoderVal[selected];
+}
+
 void playPush(byte pin, bool state) {
+
+  // @todo complete & fix
+  byte SCALES[NB_SCALES][MAX_NOTES] = {
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 1, 2, 2, 3, 4, 5, 5}, // Major
+    {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
+    {0, 1, 4, 1, 2, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues
+    {1, 1, 3, 2, 1, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues minor
+  };
+
   byte currentVelocity = pushVelocity[pin];
   byte currentNote = pushNote[pin];
   if (!pushSettingsLocked[pin]) {
     currentVelocity = globalVelocity;
     currentNote += globalNoteOffset;
   }
+
+  if (SCALES[selectedScale][pin] == UNASSIGNED) {
+    return;
+  }
+
+  currentNote += SCALES[selectedScale][pin];
+
   sendNote(currentNote, currentVelocity, state);
 }
 
@@ -651,8 +672,21 @@ int getMidiValueFromEncoder(byte currentMidiValue, int position, int previousPos
   return newMidiValue;
 }
 
-char* getNoteFromMidiValue(byte midiValue) {
-  return midiNote[midiValue];
+String getNoteFromMidiValue(byte midiValue) {
+  String MIDI_NOTES[128] = {
+    " C0 ", " d0b", " d0 ", " E0b", " E0 ", " F0 ", " F0b", " G0 ", " A0b", " A0 ", " b0b", " b0 ",
+    " C1 ", " d1b", " d1 ", " E1b", " E1 ", " F1 ", " F1b", " G1 ", " A1b", " A1 ", " b1b", " b1 ",
+    " C2 ", " d2b", " d2 ", " E2b", " E2 ", " F2 ", " F2b", " G2 ", " A2b", " A2 ", " b2b", " b2 ",
+    " C3 ", " d3b", " d3 ", " E3b", " E3 ", " F3 ", " F3b", " G3 ", " A3b", " A3 ", " b3b", " b3 ",
+    " C4 ", " d4b", " d4 ", " E4b", " E4 ", " F4 ", " F4b", " G4 ", " A4b", " A4 ", " b4b", " b4 ",
+    " C5 ", " d5b", " d5 ", " E5b", " E5 ", " F5 ", " F5b", " G5 ", " A5b", " A5 ", " b5b", " b5 ",
+    " C6 ", " d6b", " d6 ", " E6b", " E6 ", " F6 ", " F6b", " G6 ", " A6b", " A6 ", " b6b", " b6 ",
+    " C7 ", " d7b", " d7 ", " E7b", " E7 ", " F7 ", " F7b", " G7 ", " A7b", " A7 ", " b7b", " b7 ",
+    " C8 ", " d8b", " d8 ", " E8b", " E8 ", " F8 ", " F8b", " G8 ", " A8b", " A8 ", " b8b", " b8 ",
+    " C9 ", " d9b", " d9 ", " E9b", " E9 ", " F9 ", " G9b", " G9 ", " A9b", "A10 ", "b10b", "b10 ",
+    "C10 ", "d10b", "d10 ", "E0b", "E10 ", "F10 ", "G10b", "G10 ",
+  };
+  return MIDI_NOTES[midiValue];
 }
 
 int readFader(byte selected) {
@@ -704,15 +738,15 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushNote[selectedPushPin] = localMidiOffset;
     if (pushNote[selectedPushPin] < 0) { pushNote[selectedPushPin] = 0; }
-    char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
-    displayPrint(note, false, true);
+    String note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+    displayPrintString(note);
   }
   else {
     globalNoteOffset = globalMidiOffset;
     if (60+globalNoteOffset < 0) { globalNoteOffset = -60; }
     if (60+globalNoteOffset > 127) { globalNoteOffset = 67; }
-    char* note = getNoteFromMidiValue(60+globalNoteOffset);
-    displayPrint(note, false, true);
+    String note = getNoteFromMidiValue(60+globalNoteOffset);
+    displayPrintString(note);
   }
 }
 
@@ -1076,20 +1110,29 @@ bool checkMode(byte mask) {
 }
 
 void sendNote(byte note, byte velocity, bool on) {
+
+  // @see https://spinditty.com/learning/chord-building-for-musicians
+  byte CHORDS[NB_CHORDS][MAX_NOTES] = {
+    {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+    {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+    {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+    {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+  };
+
   for (
     byte offset = 0;
     offset < (MAX_NOTES - 1);
     offset++
   ) {
     if (
-      (note + chords[selectedChord][offset]) >= 128 ||
-      chords[selectedChord][offset] == UNASSIGNED
+      (note + CHORDS[selectedChord][offset]) >= 128 ||
+      CHORDS[selectedChord][offset] == UNASSIGNED
     ) {
       return;
     }
     on ?
-      MIDI.sendNoteOn(note + chords[selectedChord][offset], velocity, midiChannel) :
-      MIDI.sendNoteOff(note + chords[selectedChord][offset], velocity, midiChannel);
+      MIDI.sendNoteOn(note + CHORDS[selectedChord][offset], velocity, midiChannel) :
+      MIDI.sendNoteOff(note + CHORDS[selectedChord][offset], velocity, midiChannel);
   }
 
   if (on) {
