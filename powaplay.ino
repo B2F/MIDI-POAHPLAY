@@ -59,7 +59,7 @@ struct HairlessMidiSettings : public midi::DefaultSettings
 
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
-byte midiCC[2] = {91, 92};
+byte midiCC[2] = {20, 21};
 byte midiCCValue[2] = {63, 63};
 // https://professionalcomposers.com/midi-cc-list/
 // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
@@ -210,8 +210,8 @@ const byte NB_SCALES PROGMEM = 5;
 byte selectedScale = 0;
 
 void reinit() {
-  midiCC[0] = 0;
-  midiCC[1] = 0;
+  midiCC[0] = 20;
+  midiCC[1] = 21;
   midiCCValue[0] = 63;
   midiCCValue[1] = 63;
   midiChannel = 2;
