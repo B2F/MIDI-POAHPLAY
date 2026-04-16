@@ -178,6 +178,8 @@ byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1
 // Track last NoteOn per pad so NoteOff always matches, even if octave/scale changes while held.
 byte padActiveNote[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool padNoteIsOn[NB_PUSH] = {false,false,false,false,false,false,false,false};
+// For repeat mode: schedule a NoteOff some microseconds after NoteOn to create a real gate.
+unsigned long padScheduledOffMicros[NB_PUSH] = {0,0,0,0,0,0,0,0};
 // Nb elapsed repeats timeframes (not necessarily used) since last start time:
 unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
 byte isPushed[NB_PUSH] = {
@@ -341,6 +343,7 @@ void loop() {
   unsigned long loopTime = micros();
 
   updateMidiSerial();
+  processScheduledNoteOffs();
   if (playFlag) {
     updateLedsTempo();
   }
@@ -837,6 +840,38 @@ void retriggerHeldPads() {
   }
 }
 
+unsigned long getRepeatGateMicros(byte pin) {
+  // Gate = 50% of repeat period, clamped to avoid being too short (inaudible)
+  // or too long (overlapping notes).
+  float pinRepeatSpeed = getRepeatSpeed(pin);
+  unsigned long repeatPeriod = (float) getBeatMicros(1) * pinRepeatSpeed;
+  unsigned long gate = repeatPeriod / 2;
+  if (gate < 8000) {
+    gate = 8000;
+  }
+  if (gate > 80000) {
+    gate = 80000;
+  }
+  return gate;
+}
+
+void processScheduledNoteOffs() {
+  unsigned long now = micros();
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (padScheduledOffMicros[p] == 0) {
+      continue;
+    }
+    // Handle micros() overflow safely
+    if ((long)(now - padScheduledOffMicros[p]) >= 0) {
+      if (padNoteIsOn[p]) {
+        sendNote(padActiveNote[p], 0, false);
+        padNoteIsOn[p] = false;
+      }
+      padScheduledOffMicros[p] = 0;
+    }
+  }
+}
+
 void panicAllNotesOff() {
   // Send All Notes Off (CC123) + All Sound Off (CC120), then clear local tracking.
   // This is a safety net if something ever gets stuck.
@@ -849,6 +884,7 @@ void panicAllNotesOff() {
     }
     padNoteIsOn[p] = false;
     padActiveNote[p] = 0;
+    padScheduledOffMicros[p] = 0;
     isPushed[p] = RELEASED;
     repeatIsLocked[p] = false;
   }
@@ -882,6 +918,12 @@ void updatePadsRepeatLockUnlock(bool isLocked) {
     if (isLocked == false) {
       displayPrintString("ULoK");
       isPushed[p] = RELEASED;
+      // Stop any currently sounding note for this pad.
+      if (padNoteIsOn[p]) {
+        sendNote(padActiveNote[p], 0, false);
+        padNoteIsOn[p] = false;
+      }
+      padScheduledOffMicros[p] = 0;
     }
     else {
       displayPrintString("Lock");
@@ -918,6 +960,7 @@ void updatePads() {
         sendNote(padActiveNote[p], 0, false);
         padNoteIsOn[p] = false;
       }
+      padScheduledOffMicros[p] = 0;
     }
   }
 }
@@ -939,6 +982,8 @@ void playNotesRepeat() {
       ) {
         pushElapsedRepeats[pin]++;
         playPush(pin, true);
+        // Create a real gate time for repeat notes.
+        padScheduledOffMicros[pin] = micros() + getRepeatGateMicros(pin);
       }
     }
   }
