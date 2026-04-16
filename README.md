@@ -8,6 +8,11 @@ This project is designed for a specific hardware footprint. Because it uses **8 
 
 ![MIDI P0AH PLAY](images/1776264780911.jpg)
 
+### MIDI Signals Summary
+* **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
+* **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
+* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced repeat behavior.
+
 ### 1. Microcontroller
 *   **Recommended:** **Arduino Nano** or **Pro Mini** (ATmega328P).
 *   **Note:** This sketch uses pins **A6 and A7** for the faders. These pins are physically present on the Nano and Pro Mini but **do not exist on the Arduino Uno**. If using an Uno, you must rewire faders to A4/A5 and move the Multiplexer pins.
