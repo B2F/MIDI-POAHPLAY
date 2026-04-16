@@ -770,6 +770,7 @@ void updateVelocity(byte globalMidiValue, byte localMidiValue) {
     displayPrint(localMidiValue, false, false);
   }
   else {
+    bool velocityChanged = (globalVelocity != globalMidiValue);
     globalVelocity = globalMidiValue;
     if (selectedPushPin != -1) {
       pushVelocity[selectedPushPin] = globalVelocity;
@@ -777,6 +778,11 @@ void updateVelocity(byte globalMidiValue, byte localMidiValue) {
     display.clear();
     display.print('v');
     displayPrint(globalVelocity, false, false);
+
+    // Live velocity update: if pads are held, retrigger so new velocity applies immediately.
+    if (velocityChanged) {
+      retriggerHeldPads();
+    }
   }
 }
 
@@ -830,6 +836,8 @@ void retriggerHeldPads() {
     if (isPushed[p] != PUSHED) {
       continue;
     }
+    // Cancel any pending scheduled NoteOff (repeat gate) so it doesn't turn off the new note.
+    padScheduledOffMicros[p] = 0;
     if (padNoteIsOn[p]) {
       // Use velocity 0 for safety / compatibility.
       sendNote(padActiveNote[p], 0, false);
