@@ -1,17 +1,55 @@
 # MIDI P0AH PLAY (proto-serial)
 
-DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, ultrasonic "D-Beam," and a pad-locking system.
+DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, CC performance controls, ultrasonic "D-Beam," repeat/gate behavior, pad lock/unlock, and MIDI clock sync.
 
 ### MIDI Signals Summary
 * **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
 * **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
 * **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced repeat behavior.
 
+![MIDI P0AH PLAY](images/1776264780911.jpg)
+
+## ✅ Current Firmware Feature Set
+
+### Notes / Musical Engine
+* 8 pads (`P1..P8`) mapped to semitone positions with optional scale remap.
+* Global velocity + per-pad velocity lock.
+* Global base note / transpose editing in Init workflow.
+* Global octave control (fader + encoder), with live retrigger of held pads.
+* Chord engine with **10 chord types**:
+  * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`
+* Scales currently available:
+  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`
+
+### CC Engine
+* 2 editable CC lanes (`midiCC[0]`, `midiCC[1]`) with values from encoders/faders.
+* Pad CC presets (in CC mode):
+  * `P1→CC20`, `P2→CC21`, `P3→CC22`, `P4→CC23`,
+  * `P5→CC24`, `P6→CC25`, `P7→CC26`, `P8→CC27`
+* CC preset display format on 4-digit screen:
+  * `C020 ... C027`
+
+### Repeat / Gate
+* Repeat clocking per pad, with lock/unlock behavior.
+* Repeat divisor editing.
+* Scheduled NoteOff gate to avoid stuck/overlapping repeat notes.
+
+### Sync / Transport / Safety
+* MIDI realtime handling: `CLOCK`, `START`, `STOP`, `CONTINUE`, `SPP`.
+* Tick-based tempo LED display (one LED at a time).
+* Panic on Init-switch edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
+
+### LED Behavior
+* 4 LEDs reflect pad columns when playing pads:
+  * LED1 = pads 1+5
+  * LED2 = pads 2+6
+  * LED3 = pads 3+7
+  * LED4 = pads 4+8
+* During MIDI sync and no held pads: LEDs show beat phase (single LED chase).
+
 ## 🛠 Required Hardware
 
 This project is designed for a specific hardware footprint. Because it uses **8 pads, 4 mode switches, and 2 encoder buttons**, a multiplexer is mandatory.
-
-![MIDI P0AH PLAY](images/1776264780911.jpg)
 
 ### 1. Microcontroller
 *   **Recommended:** **Arduino Nano** or **Pro Mini** (ATmega328P).
@@ -56,11 +94,37 @@ This project is designed for a specific hardware footprint. Because it uses **8 
 
 Toggle the physical Mode Switches to change functionality:
 
-*   **Standard Mode (All OFF):** Faders control Velocity/Octave. Hold Encoder switches to change **Scales** (`SEMI`, `MAJ`, `MIN`, `BLUE`) or **Chords** (`MAJ`, `MIN`, `AUG`).
-*   **CC Mode (`SW_CC` ON):** Encoders/Faders send MIDI CCs. Use pads as CC presets.
-*   **Repeat Mode (`SW_REPEAT` ON):** Arpeggiator mode. Hold **Left Encoder Switch** to change speed. Lock repeats by holding Pad + Left Switch.
-*   **Ultrasonic Mode (`SW_ULTRASONIC` ON):** Distance-based CC control (D-Beam style).
-*   **Init Mode (`SW_PLAY` ON):** Set MIDI Channel and Base Note. Hold **Left Encoder Switch** while toggling this off to perform a **Factory Reset**.
+* **Standard Mode:**
+  * Fader 1 = Velocity, Fader 2 = Octave.
+  * Encoder 1 = Velocity, Encoder 2 = Octave.
+  * Right encoder push: scale select.
+  * Left encoder push: chord select.
+  * Pad lock/unlock available via encoder-push + pad workflows.
+
+* **CC Mode (`SW_CC`)**
+  * Faders + (released) encoders edit CC values.
+  * **CC number selection with encoder push:**
+    * Hold **Left encoder push** (`P1SW`) to edit/select **CC lane 1**.
+      * Turning encoder 1 changes the CC number for lane 1.
+      * Pressing pads selects preset CC numbers for lane 1 (`P1..P8 => CC20..CC27`).
+    * Hold **Right encoder push** (`P2SW`) to edit/select **CC lane 2**.
+      * Turning encoder 2 changes the CC number for lane 2.
+      * Pressing pads selects preset CC numbers for lane 2 (`P1..P8 => CC20..CC27`).
+  * Preset CC labels are displayed as `C020..C027`.
+
+* **Repeat Mode (`SW_REPEAT`)**
+  * Left encoder push: repeat speed/divisor edit.
+  * Pad repeat lock/unlock workflows available while in repeat context.
+
+* **Ultrasonic Mode (`SW_ULTRASONIC`)**
+  * Right encoder push: set ultrasonic target CC number.
+  * Left encoder push: set max ultrasonic distance range.
+  * Sensor sends continuous CC based on measured distance.
+
+* **Init / Setup Mode (`SW_PLAY` logic)**
+  * Encoder 1: MIDI channel (`CHx`).
+  * Encoder 2: base note / transpose reference (note name shown).
+  * Left encoder push on init entry can trigger `reinit()` (factory-style reset of runtime settings).
 
 
 ---

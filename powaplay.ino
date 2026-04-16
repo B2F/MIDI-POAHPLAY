@@ -439,12 +439,12 @@ void loop() {
   }
   else if (checkMode(CC_MASK)) {
     if (rightPush == PUSHED) {
-      updateMidiControlFromEncoder(0);
-      selectCCPreset(0);
-    }
-    if (leftPush == PUSHED) {
       updateMidiControlFromEncoder(1);
       selectCCPreset(1);
+    }
+    if (leftPush == PUSHED) {
+      updateMidiControlFromEncoder(0);
+      selectCCPreset(0);
     }
   }
   else {
@@ -1240,11 +1240,12 @@ void selectCCPreset(byte selected) {
       continue;
     }
 
-    midiCC[selected] = midiCCPresets[p];
+    byte presetCC = pgm_read_byte(&midiCCPresets[p]);
+    midiCC[selected] = presetCC;
     display.clear();
     display.setColonOn(false);
     char label[5];
-    snprintf(label, sizeof(label), "C%03u", midiCC[selected]);
+    snprintf(label, sizeof(label), "C%03u", presetCC);
     display.print(label);
   }
 }
