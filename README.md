@@ -1,194 +1,85 @@
-# MIDI P0Ah PLAy (proto-serial)
+# MIDI P0AH PLAY (proto-serial)
 
-DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial** and can also **follow incoming MIDI clock** to sync a pad note-repeat engine.
+DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, ultrasonic "D-Beam," and a pad-locking system.
 
-Everything is in [`powaplay.ino`](./powaplay.ino).
+## 🛠 Required Hardware
 
-## What You Get
+This project is designed for a specific hardware footprint. Because it uses **8 pads, 4 mode switches, and 2 encoder buttons**, a multiplexer is mandatory.
 
-**Inputs**
+![MIDI P0AH PLAY](images/1776264780911.jpg)
 
-- 8 pads (momentary buttons) through a CD74HC4067 multiplexer
-- 2 rotary encoders (+ 2 encoder push switches, also read on the mux)
-- 2 faders
-- 4 mode switches (mux channels `0`, `1`, `10`, `11`)
-- Optional ultrasonic sensor (HC-SR04)
+### 1. Microcontroller
+*   **Recommended:** **Arduino Nano** or **Pro Mini** (ATmega328P).
+*   **Note:** This sketch uses pins **A6 and A7** for the faders. These pins are physically present on the Nano and Pro Mini but **do not exist on the Arduino Uno**. If using an Uno, you must rewire faders to A4/A5 and move the Multiplexer pins.
 
-**Outputs**
+### 2. Multiplexer
+*   **Model:** **CD74HC4067** (16-Channel Analog/Digital Multiplexer).
+*   This is the "brain" of the inputs, handling all 8 pads, the 4 mode switches, and the 2 encoder push-buttons via a single analog pin (`A0`).
 
-- MIDI out (Serial bridge):
-  - Note On/Off (with optional chords and scale remap)
-  - Control Change (CC)
-- Tempo LEDs (4 outputs) driven from incoming MIDI clock
-- Built-in LED + `MAGNET` output while a note is on
-- TM1637 4-digit display for feedback (velocity, octave, CC, repeat speed, etc.)
+### 3. Other Components
+*   **Rotary Encoders:** 2x Standard KY-040 (or similar).
+*   **Display:** 4-digit TM1637 7-segment display.
+*   **Sensor:** HC-SR04 Ultrasonic Sensor.
+*   **Physical Feedback:** 4x LEDs (Tempo) and 1x Solenoid/Magnet (Triggered via Pin A5).
 
-## Quick Start
+## 🎹 Pin & Multiplexer Mapping
 
-1. Open [`powaplay.ino`](./powaplay.ino) in the Arduino IDE.
-2. Install dependencies (Arduino Library Manager, or your preferred method):
-   - `MIDI` (FortySevenEffects)
-   - `Encoder` (Paul Stoffregen)
-   - A TM1637 7-segment library that provides `SevenSegmentTM1637.h` / `SevenSegmentFun.h`
-   - `light_CD74HC4067` (CD74HC4067 multiplexer)
-   - `HCSR04`
-3. Select your board and port, then upload.
-4. On the computer, bridge the serial port to MIDI:
-   - Hairless MIDI <-> Serial Bridge is the intended workflow (custom MIDI settings in the sketch).
-5. In your DAW:
-   - Select the created MIDI input as the controller input.
-   - If you want tempo-synced repeats, send MIDI clock/start/stop to the controller (through the same bridge).
+| Component | Pin / Mux Channel |
+| :--- | :--- |
+| **Mux SIG** | **A0** (The entry point for 14 inputs) |
+| **Mux Address** | **A1, A2, A3, A4** (S0-S3) |
+| **Fader 1 & 2** | **A6, A7** (Dedicated Analog) |
+| **Encoders** | D2/D4 (Enc 1) and D3/D5 (Enc 2) |
+| **Display** | D12 (CLK), D11 (DIO) |
+| **Ultrasonic** | D13 (Trig), D6 (Echo) |
+| **Magnet Out** | **A5** (Active on Note On) |
 
-## MIDI I/O
+### Multiplexer (CD74HC4067) Channel Map:
+| Channel | Function |
+| :--- | :--- |
+| **0** | `SW_CC` (Mode Switch) |
+| **1** | `SW_REPEAT` (Mode Switch) |
+| **2 – 9** | **Pads 1 – 8** (Performance Buttons) |
+| **10** | `SW_ULTRASONIC` (Mode Switch) |
+| **11** | `SW_PLAY` (Init/Reset Mode Switch) |
+| **14** | `P2SW` (Right Encoder Push) |
+| **15** | `P1SW` (Left Encoder Push) |
 
-**Serial MIDI**
+---
 
-- Baud rate: `38400` (`BAUD_RATE`)
-- MIDI channel: `midiChannel` (default `2`)
+## 🕹 Operating Modes
 
-**MIDI output**
+Toggle the physical Mode Switches to change functionality:
 
-- Notes: `sendNote()` sends NoteOn/NoteOff (and expands to a chord if enabled).
-- CC: `MIDI.sendControlChange(...)` from CC mode and from the ultrasonic sensor.
+*   **Standard Mode (All OFF):** Faders control Velocity/Octave. Hold Encoder switches to change **Scales** (`SEMI`, `MAJ`, `MIN`, `BLUE`) or **Chords** (`MAJ`, `MIN`, `AUG`).
+*   **CC Mode (`SW_CC` ON):** Encoders/Faders send MIDI CCs. Use pads as CC presets.
+*   **Repeat Mode (`SW_REPEAT` ON):** Arpeggiator mode. Hold **Left Encoder Switch** to change speed. Lock repeats by holding Pad + Left Switch.
+*   **Ultrasonic Mode (`SW_ULTRASONIC` ON):** Distance-based CC control (D-Beam style).
+*   **Init Mode (`SW_PLAY` ON):** Set MIDI Channel and Base Note. Hold **Left Encoder Switch** while toggling this off to perform a **Factory Reset**.
 
-**MIDI input (from Serial)**
 
-The sketch listens for:
+---
 
-- `MIDI_START` / `MIDI_STOP` / `MIDI_CONTINUE`
-- `MIDI_CLOCK` (used to compute BPM and drive the tempo LEDs)
-- `MIDI_SONG_POSITION_POINTER` (display only; TODO)
+## 💻 Software Setup & MIDI Routing
 
-## Controls (Practical)
+Since this device communicates over a standard Serial port (not Native USB MIDI), you must bridge the signal on your computer.
 
-### Pads
+### The Windows Workflow (loopMIDI + Hairless)
+On Windows, MIDI software cannot "see" Serial data directly. You need two tools:
+1.  **[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html):** Create a virtual MIDI port (e.g., call it "P0Ah Port").
+2.  **[Hairless MIDI <-> Serial Bridge](https://projectgus.github.io/hairless-midiserial/):**
+    *   Set **Serial Port** to your Arduino's COM port.
+    *   Set **MIDI Out** to your loopMIDI virtual port.
+    *   Set **MIDI In** to your loopMIDI virtual port (for clock sync).
+    *   Go to `Preferences` and set the **Baud Rate to 38400**.
+3.  **In your DAW:** Select the virtual (LoopMidi) Port as your MIDI Input and Output (to send clock).
 
-- Pressing a pad triggers `playPush(pad, on/off)`.
-- Default pad base notes are initialized from `globalStartNote` (default `48`) in `setup()` as `pushNote[pad] = globalStartNote + pad`.
-- Depending on the selected scale, some pads can be disabled (`UNASSIGNED`) and will produce no note.
+### Alternative bridge solution
+For modern WSL compatible serial MIDI bridge, use: **[SerialMidi-WMS](https://github.com/B2F/SerialMidi-WMS)**
 
-Tip: a lot of “edit” actions apply to the *selected pad* (`selectedPushPin`). Press a pad first before trying to edit per-pad settings.
+---
 
-### Performance Mode (normal play)
-
-When `CC` mode is OFF:
-
-- Fader 1 (`F1`) edits velocity (global or per-pad if the pad is locked).
-- Fader 2 (`F2`) edits octave (`-4` to `+6`) and sets `globalNoteOffset = octave * 12`.
-- Turning an encoder (when its push switch is not held) fine-adjusts velocity or octave.
-
-**Chords and scales**
-
-- Hold the encoder push switch that triggers *scale selection* and turn the corresponding encoder to cycle scales:
-  - `SEMI` (no remap)
-  - `MAJ`, `MIN_`, `BLUE`, `BLU_`
-- Hold the encoder push switch that triggers *chord selection* and turn the corresponding encoder to cycle chords:
-  - `NOTE` (no chord)
-  - `MAJ`, `MIN`, `AUG`
-
-### CC Mode
-
-Enable CC mode via the mux switch `SW_CC` (mux channel `0`).
-
-- Fader 1 and fader 2 send CC values for two CC lanes (`midiCC[0]` and `midiCC[1]`).
-- Turning an encoder adjusts the CC value (unless you are holding the corresponding encoder push switch).
-- Holding an encoder push switch switches that lane into “CC select”:
-  - Turn the encoder to change the CC number (`midiCC[x]`).
-  - Hold one or more pads to pick a CC preset from `midiCCPresets[]` (pads map to presets).
-
-### Note Repeat Mode
-
-Enable repeat mode via the mux switch `SW_REPEAT` (mux channel `1`).
-
-- Pads you hold will repeat in sync with the internal tempo (which follows incoming MIDI clock when present).
-- Hold the repeat-speed modifier and turn the encoder to change repeat speed divisor (`1..64`). The display shows `1N` with the colon lit.
-
-**Repeat lock**
-
-- While in repeat mode, you can lock repeating on the currently held pads:
-  - Hold the lock modifier: locks the held pads (`repeatIsLocked[p] = true`)
-  - Hold the unlock modifier: unlocks the held pads (`repeatIsLocked[p] = false`)
-
-### Ultrasonic Mode (HC-SR04)
-
-Enable ultrasonic mode via the mux switch `SW_ULTRASONIC` (mux channel `10`).
-
-- The sensor distance is mapped to a CC value and sent continuously.
-- Holding the appropriate encoder push switch lets you edit:
-  - `ultrasonicCC` (CC number)
-  - `maxUltrasonicDistanceCm` (range)
-
-### Init / Reset Mode
-
-Enable init mode via the mux switch `SW_PLAY` (mux channel `11`, used as `INIT_MASK` in this branch).
-
-- In init mode, encoders adjust:
-  - MIDI channel
-  - base note offset (global/per-pad depending on pad selection/lock)
-- There is also a “reinit” gesture: when leaving init mode, holding the left encoder push switch triggers `reinit()` (display shows `init`).
-
-## Hardware / Wiring
-
-Multiplexer:
-
-- CD74HC4067 signal -> `A0` (`MUXSIG`) with `INPUT_PULLUP`
-- Address pins -> `A1, A2, A3, A4`
-- Inputs are treated as active-low for pads (`PUSHED == LOW`).
-- Mode switches are read as `true` when the mux input reads HIGH in `readSwitches()`.
-
-Encoders:
-
-- Encoder A/B pins:
-  - P1: `P1CLK=2`, `P1DT=4`
-  - P2: `P2CLK=3`, `P2DT=5`
-- Encoder push switches are read through the mux:
-  - `P1SW` is mux channel `15`
-  - `P2SW` is mux channel `14`
-
-Faders:
-
-- `F1 = A6`, `F2 = A7`
-
-Display (TM1637-style):
-
-- `LCD_CLK = 12`, `LCD_DIO = 11`
-
-LED outputs:
-
-- `L1 = 10`, `L2 = 9`, `L3 = 8`, `L4 = 7`
-
-Ultrasonic:
-
-- `triggerPin = 13`, `echoPin = 6`
-
-Magnet output:
-
-- `MAGNET = A5` (set HIGH while notes are on)
-
-Board notes:
-
-- `A6/A7` are not present on some boards (for example Uno). Use a board that has them (Nano/Pro Mini) or change `F1/F2`.
-- MIDI is on `Serial` (hardware UART). On native-USB boards you may need a different serial interface and to adjust `MIDI_CREATE_CUSTOM_INSTANCE(...)`.
-
-## Common Tweaks
-
-In [`powaplay.ino`](./powaplay.ino):
-
-- `midiChannel` (default `2`)
-- `globalStartNote` (default `48`)
-- `midiCCPresets[]` (which CC numbers the pads select in CC mode)
-- Fader threshold/feel: `MAX_FADER_VALUE`, `MIN_FADER_VALUE`, `FADER_THRESHOLD`
-
-## Troubleshooting
-
-- No MIDI:
-  - Confirm your bridge baud rate is **38400**.
-  - Confirm the DAW is using the correct virtual MIDI port.
-- Repeats not synced:
-  - This sketch expects incoming MIDI clock on the serial MIDI input path. Make sure your bridge routes clock from the DAW to the Arduino.
-- Some pads produce no sound:
-  - In some scales, pads can be `UNASSIGNED` and are intentionally muted.
-
-## License
-
-No `LICENSE` file is currently present in the repository.
+## ⚠️ Troubleshooting
+*   **Baud Rate:** If you see "Garbage" in Hairless MIDI, ensure the baud rate is exactly **38400**.
+*   **Ghost Triggers:** Ensure the CD74HC4067 `EN` (Enable) pin is connected to **Ground**.
+*   **Uno Users:** If you are forced to use an Uno, change `F1` and `F2` in the code to `A2` and `A3`, and move your Multiplexer Address pins to the Digital rail.
