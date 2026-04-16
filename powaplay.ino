@@ -175,6 +175,9 @@ byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+// Track last NoteOn per pad so NoteOff always matches, even if octave/scale changes while held.
+byte padActiveNote[NB_PUSH] = {0,0,0,0,0,0,0,0};
+bool padNoteIsOn[NB_PUSH] = {false,false,false,false,false,false,false,false};
 // Nb elapsed repeats timeframes (not necessarily used) since last start time:
 unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
 byte isPushed[NB_PUSH] = {
@@ -190,6 +193,9 @@ byte isPushed[NB_PUSH] = {
 unsigned long pushedTime[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int selectedPushPin = -1;
+
+// Switch edge tracking (for SW_PLAY panic on press)
+bool prevInitMode = false;
 
 // Chords
 // Including NOTE (no chord).
@@ -246,6 +252,11 @@ void reinit() {
   selectedPushPin = -1;
   octave = 0;
   selectedChord = 0;
+
+  for (byte i = 0; i < 8; i++) {
+    padNoteIsOn[i] = false;
+    padActiveNote[i] = 0;
+  }
 }
 
 void setup() {
@@ -338,6 +349,13 @@ void loop() {
   }
 
   readSwitches();
+  // Panic: when SW_PLAY is pressed (mapped to INIT_MASK), send All Notes Off.
+  // We detect the rising edge of INIT_MASK.
+  bool initMode = checkMode(INIT_MASK);
+  if (initMode && !prevInitMode) {
+    panicAllNotesOff();
+  }
+  prevInitMode = initMode;
   updatePads();
 
   for (byte pos = 0; pos < NB_FADERS; pos++) {
@@ -508,6 +526,10 @@ void updateOctaveFromFader(byte selected) {
   }
   globalNoteOffset = octave * 12;
   faderPos[selected] = faderVal[selected];
+
+  // Live transposition: if pads are currently held, retrigger them
+  // so the pitch follows the octave change.
+  retriggerHeldPads();
 }
 
 void updateVelocityFromEncoder(byte selected) { 
@@ -640,7 +662,24 @@ void playPush(byte pin, bool state) {
 
   currentNote += SCALES[selectedScale][pin];
 
-  sendNote(currentNote, currentVelocity, state);
+  if (state) {
+    // Ensure we don't leave a previous note on (important for repeat & live transposition)
+    if (padNoteIsOn[pin]) {
+      sendNote(padActiveNote[pin], 0, false);
+      padNoteIsOn[pin] = false;
+    }
+
+    padActiveNote[pin] = currentNote;
+    padNoteIsOn[pin] = true;
+    sendNote(currentNote, currentVelocity, true);
+  }
+  else {
+    // Prefer turning off what we actually turned on.
+    if (padNoteIsOn[pin]) {
+      sendNote(padActiveNote[pin], 0, false);
+      padNoteIsOn[pin] = false;
+    }
+  }
 }
 
 byte getMidiValueFromFader(byte selected) {
@@ -776,6 +815,43 @@ void moveOctave(bool up) {
   }
   display.setColonOn(false);
   globalNoteOffset = octave * 12;
+
+  // Live transposition for encoder octave changes too.
+  retriggerHeldPads();
+}
+
+void retriggerHeldPads() {
+  // For each currently-held pad: NoteOff the previously sounding note, then NoteOn the new one.
+  // This avoids stuck notes and gives live transposition.
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (isPushed[p] != PUSHED) {
+      continue;
+    }
+    if (padNoteIsOn[p]) {
+      // Use velocity 0 for safety / compatibility.
+      sendNote(padActiveNote[p], 0, false);
+      padNoteIsOn[p] = false;
+    }
+    // Recompute and trigger the new note.
+    playPush(p, true);
+  }
+}
+
+void panicAllNotesOff() {
+  // Send All Notes Off (CC123) + All Sound Off (CC120), then clear local tracking.
+  // This is a safety net if something ever gets stuck.
+  MIDI.sendControlChange(123, 0, midiChannel);
+  MIDI.sendControlChange(120, 0, midiChannel);
+
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (padNoteIsOn[p]) {
+      sendNote(padActiveNote[p], 0, false);
+    }
+    padNoteIsOn[p] = false;
+    padActiveNote[p] = 0;
+    isPushed[p] = RELEASED;
+    repeatIsLocked[p] = false;
+  }
 }
 
 void updatePadsLock(bool lock) {
@@ -837,7 +913,11 @@ void updatePads() {
     }
     else if (sensorVal == RELEASED && isPushed[p] == PUSHED) {
       isPushed[p] = RELEASED;
-      playPush(p, 0);
+      // Ensure NoteOff matches what we actually turned on.
+      if (padNoteIsOn[p]) {
+        sendNote(padActiveNote[p], 0, false);
+        padNoteIsOn[p] = false;
+      }
     }
   }
 }
