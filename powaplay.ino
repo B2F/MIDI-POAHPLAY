@@ -325,19 +325,6 @@ void setup() {
   }
 }
 
-void testFaders() {
-  if (faderPos[0] != faderVal[0]) {
-    faderPos[0] = faderVal[0];
-    Serial.println(faderVal[0]);
-    Serial.println("Selected 1");
-  }
-  if (faderPos[1] != faderVal[1]) {
-    faderPos[1] = faderVal[1];
-    Serial.println(faderVal[1]);
-    Serial.println("Selected 2");
-  }
-}
-
 void loop() {
 
   unsigned long loopTime = micros();
