@@ -357,6 +357,20 @@ void loop() {
   prevInitMode = initMode;
   updatePads();
 
+  // Update LEDs AFTER pad/switch scan so they always reflect current pad state.
+  if (playFlag) {
+    // While synced: pads override tempo while held.
+    if (aPadIsPushed()) {
+      updateLedsPads();
+    }
+    else {
+      updateLedsTempo();
+    }
+  }
+  else {
+    updateLedsPads();
+  }
+
   for (byte pos = 0; pos < NB_FADERS; pos++) {
     faderVal[pos] = readFader(pos);
   }
@@ -448,6 +462,21 @@ void loop() {
   if (checkMode(ULTRASONIC_MASK)) {
     trackUltrasonicChanges();
   }
+}
+
+// Pads -> LEDs mapping (columns):
+// LED1: pads 1 & 5 (index 0 & 4)
+// LED2: pads 2 & 6 (index 1 & 5)
+// LED3: pads 3 & 7 (index 2 & 6)
+// LED4: pads 4 & 8 (index 3 & 7)
+void updateLedsPads() {
+  // Light an LED whenever *any* pad in its column is currently pushed.
+  // (Does not track history; always reflects current pad state.)
+  byte s1 = (isPushed[0] == PUSHED || isPushed[4] == PUSHED) ? HIGH : LOW;
+  byte s2 = (isPushed[1] == PUSHED || isPushed[5] == PUSHED) ? HIGH : LOW;
+  byte s3 = (isPushed[2] == PUSHED || isPushed[6] == PUSHED) ? HIGH : LOW;
+  byte s4 = (isPushed[3] == PUSHED || isPushed[7] == PUSHED) ? HIGH : LOW;
+  writeLeds(s1, s2, s3, s4);
 }
 
 void updateChannelFromEncoder(byte selected) {
@@ -1002,24 +1031,23 @@ float getRepeatSpeed(byte pin) {
 } 
 
 void updateLedsTempo() {
+  // Tick-based LED phase (stable):
+  // MIDI clock = 24 ticks/quarter => 96 ticks / bar (4/4)
+  // Show one LED per quarter of the bar.
+  byte step = midiCLockTick % 96;
 
-  unsigned long nextNoteMicros = getNextNoteMicros();
-  unsigned long loopTime = micros();
-
-  // @todo flash oxxx then oooo if no SPP found.
-  if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.25))) {
-    writeLeds(HIGH, HIGH, HIGH, HIGH);
-  }
-  else if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.5))) {
-    writeLeds(HIGH, HIGH, HIGH, LOW);
-  }
-  else if (loopTime > (nextNoteMicros - getOneNoteFractionMicros(0.75))) {
-    writeLeds(HIGH, HIGH, LOW, LOW);
-  }
-  else if (loopTime > (nextNoteMicros - oneNoteTime)) {
+  if (step < 24) {
     writeLeds(HIGH, LOW, LOW, LOW);
   }
-
+  else if (step < 48) {
+    writeLeds(LOW, HIGH, LOW, LOW);
+  }
+  else if (step < 72) {
+    writeLeds(LOW, LOW, HIGH, LOW);
+  }
+  else {
+    writeLeds(LOW, LOW, LOW, HIGH);
+  }
 }
 
 unsigned long getOneNoteFractionMicros(float fraction) {
