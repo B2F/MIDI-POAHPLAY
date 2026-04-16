@@ -201,9 +201,21 @@ bool prevInitMode = false;
 
 // Chords
 // Including NOTE (no chord).
-const byte NB_CHORDS PROGMEM = 4;
+const byte NB_CHORDS PROGMEM = 10;
 const byte MAX_NOTES PROGMEM = 8;
 byte selectedChord = 0;
+const char* CHORD_NAMES[NB_CHORDS] = {
+  "NOTE", // Single Note
+  "MAJ ", // Major
+  "MIN ", // Minor
+  "AUG ", // Augmented
+  "dIM ", // Diminished
+  "SUS2", // Suspended 2
+  "SUS4", // Suspended 4
+  " 7th", // Dominant 7th
+  "MAJ7", // Major 7th
+  "MIN7"  // Minor 7th
+};
 
 // Scales
 const byte NB_SCALES PROGMEM = 5;
@@ -331,10 +343,7 @@ void loop() {
 
   updateMidiSerial();
   processScheduledNoteOffs();
-  if (playFlag) {
-    updateLedsTempo();
-  }
-  else if (playFlag == false) {
+  if (playFlag == false) {
     playNotesRepeat();
   }
 
@@ -469,14 +478,6 @@ void updateBaseNoteFromEncoder(byte selected) {
 
 void chordSelect(byte selected) {
 
-  String CHORDS_NAMES[NB_CHORDS] = {
-    // NOTE <=> no chord.
-    "NOTE",
-    "MAJ",
-    "MIN",
-    "AUG"
-  };
-
   encoderVal[selected] = readEncoder(selected);
   if (encoderVal[selected] == encoderPos[selected]) {
     return;
@@ -490,7 +491,7 @@ void chordSelect(byte selected) {
     selectedChord = selectedChord > 0 ? selectedChord - 1 : 0;
   }
   display.clear();
-  display.print(CHORDS_NAMES[selectedChord]);
+  display.print(CHORD_NAMES[selectedChord]);
   display.setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
 }
@@ -509,10 +510,14 @@ void updateOctaveFromFader(byte selected) {
   octave = round(relativeValue / 100) - 4;
   display.clear();
   if (octave >= 0) {
-    display.print(String(octave) + "oct");
+    char label[8];
+    snprintf(label, sizeof(label), "%doct", octave);
+    display.print(label);
   }
   else {
-    display.print(String(octave) + "oc");
+    char label[8];
+    snprintf(label, sizeof(label), "%doc", octave);
+    display.print(label);
   }
   globalNoteOffset = octave * 12;
   faderPos[selected] = faderVal[selected];
@@ -562,6 +567,8 @@ bool updateMidiSerial() {
     playFlag = true;
     startTime = loopTime - MIDI_START_OFFSET;
     nbElapsedNotes = 0;
+    // Re-align beat phase on transport start.
+    midiCLockTick = 0;
     displayPrint("PLAY", false, true);
   }
   if (serialByte == MIDI_STOP) {
@@ -601,7 +608,7 @@ void writeLeds(byte s1, byte s2, byte s3, byte s4) {
 
 void scaleSelect(byte selected) {
 
-  char* SCALES_NAMES[NB_SCALES] = {
+  const char* SCALES_NAMES[NB_SCALES] = {
     "SEMI",
     "MAJ",
     "MIN_",
@@ -703,21 +710,28 @@ int getMidiValueFromEncoder(byte currentMidiValue, int position, int previousPos
   return newMidiValue;
 }
 
-String getNoteFromMidiValue(byte midiValue) {
-  String MIDI_NOTES[128] = {
-    " C0 ", " d0b", " d0 ", " E0b", " E0 ", " F0 ", " F0b", " G0 ", " A0b", " A0 ", " b0b", " b0 ",
-    " C1 ", " d1b", " d1 ", " E1b", " E1 ", " F1 ", " F1b", " G1 ", " A1b", " A1 ", " b1b", " b1 ",
-    " C2 ", " d2b", " d2 ", " E2b", " E2 ", " F2 ", " F2b", " G2 ", " A2b", " A2 ", " b2b", " b2 ",
-    " C3 ", " d3b", " d3 ", " E3b", " E3 ", " F3 ", " F3b", " G3 ", " A3b", " A3 ", " b3b", " b3 ",
-    " C4 ", " d4b", " d4 ", " E4b", " E4 ", " F4 ", " F4b", " G4 ", " A4b", " A4 ", " b4b", " b4 ",
-    " C5 ", " d5b", " d5 ", " E5b", " E5 ", " F5 ", " F5b", " G5 ", " A5b", " A5 ", " b5b", " b5 ",
-    " C6 ", " d6b", " d6 ", " E6b", " E6 ", " F6 ", " F6b", " G6 ", " A6b", " A6 ", " b6b", " b6 ",
-    " C7 ", " d7b", " d7 ", " E7b", " E7 ", " F7 ", " F7b", " G7 ", " A7b", " A7 ", " b7b", " b7 ",
-    " C8 ", " d8b", " d8 ", " E8b", " E8 ", " F8 ", " F8b", " G8 ", " A8b", " A8 ", " b8b", " b8 ",
-    " C9 ", " d9b", " d9 ", " E9b", " E9 ", " F9 ", " G9b", " G9 ", " A9b", "A10 ", "b10b", "b10 ",
-    "C10 ", "d10b", "d10 ", "E0b", "E10 ", "F10 ", "G10b", "G10 ",
+const char* getNoteFromMidiValue(byte midiValue) {
+  // Lightweight formatter to avoid allocating 128 Strings on each call.
+  static char note[5];
+  const char* names[12] = {
+    "C", "d", "D", "E", "E", "F", "F", "G", "A", "A", "b", "b"
   };
-  return MIDI_NOTES[midiValue];
+  const char accidental[12] = {
+    ' ', 'b', ' ', 'b', ' ', ' ', 'b', ' ', 'b', ' ', 'b', ' '
+  };
+
+  byte n = midiValue % 12;
+  byte oct = midiValue / 12;
+  // Keep same compact style as existing display strings (4 chars max)
+  // e.g. " C4 ", "Eb4 ", "A10 " -> compressed for 4-char display.
+  if (oct < 10) {
+    snprintf(note, sizeof(note), "%1s%c%1u", names[n], accidental[n], oct);
+  }
+  else {
+    // Two-digit octave fallback
+    snprintf(note, sizeof(note), "%1s%1u%1u", names[n], oct / 10, oct % 10);
+  }
+  return note;
 }
 
 int readFader(byte selected) {
@@ -771,14 +785,14 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushNote[selectedPushPin] = localMidiOffset;
     if (pushNote[selectedPushPin] < 0) { pushNote[selectedPushPin] = 0; }
-    String note = getNoteFromMidiValue(pushNote[selectedPushPin]);
+    const char* note = getNoteFromMidiValue(pushNote[selectedPushPin]);
     displayPrintString(note);
   }
   else {
     globalNoteOffset = globalMidiOffset;
     if (60+globalNoteOffset < 0) { globalNoteOffset = -60; }
     if (60+globalNoteOffset > 127) { globalNoteOffset = 67; }
-    String note = getNoteFromMidiValue(60+globalNoteOffset);
+    const char* note = getNoteFromMidiValue(60+globalNoteOffset);
     displayPrintString(note);
   }
 }
@@ -798,10 +812,14 @@ void moveOctave(bool up) {
   }
   display.clear();
   if (octave >= 0) {
-    display.print(String(octave) + "oct");
+    char label[8];
+    snprintf(label, sizeof(label), "%doct", octave);
+    display.print(label);
   }
   else {
-    display.print(String(octave) + "oc");
+    char label[8];
+    snprintf(label, sizeof(label), "%doc", octave);
+    display.print(label);
   }
   display.setColonOn(false);
   globalNoteOffset = octave * 12;
@@ -885,7 +903,9 @@ void updatePadsLock(bool lock) {
       display.clear();
       if (lock == false) {
         pushSettingsLocked[p] = true;
-        display.print("PAd" + String(p+1));
+        char label[6];
+        snprintf(label, sizeof(label), "PAd%u", p + 1);
+        display.print(label);
       }
       else {
         pushSettingsLocked[p] = false;
@@ -1147,7 +1167,9 @@ void updateNoteRepeatSpeedFromEncoder(byte selected) {
       pushedTime[pad] = micros();
     }
     display.clear();
-    display.print(" 1" + String(repeatSpeedDivisor));
+    char label[6];
+    snprintf(label, sizeof(label), " 1%u", repeatSpeedDivisor);
+    display.print(label);
     display.setColonOn(true);
   }
 }
@@ -1214,6 +1236,12 @@ void displayPrintString(String s) {
   display.print(s);
 }
 
+void displayPrintString(const char s[]) {
+  display.setColonOn(false);
+  display.clear();
+  display.print(s);
+}
+
 void prepareDisplay(bool semicolon, bool clear) {
   semicolon ? display.setColonOn(true) : display.setColonOn(false);
   if (clear) {
@@ -1229,10 +1257,16 @@ void sendNote(byte note, byte velocity, bool on) {
 
   // @see https://spinditty.com/learning/chord-building-for-musicians
   byte CHORDS[NB_CHORDS][MAX_NOTES] = {
-    {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-    {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-    {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
-    {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},
+    {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
+    {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
+    {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MIN
+    {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // AUG
+    {0, 3, 6, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // dIM
+    {0, 2, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS2
+    {0, 5, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS4
+    {0, 4, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // 7th
+    {0, 4, 7, 11, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MAJ7
+    {0, 3, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MIN7
   };
 
   for (
