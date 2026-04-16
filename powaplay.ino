@@ -1241,10 +1241,11 @@ void selectCCPreset(byte selected) {
     }
 
     midiCC[selected] = midiCCPresets[p];
-    // Problème d'affichage
     display.clear();
-    display.print('P');
-    displayPrint(midiCCPresets[p], false, false);
+    display.setColonOn(false);
+    char label[5];
+    snprintf(label, sizeof(label), "C%03u", midiCC[selected]);
+    display.print(label);
   }
 }
 
