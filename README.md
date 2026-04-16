@@ -2,16 +2,16 @@
 
 DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, ultrasonic "D-Beam," and a pad-locking system.
 
+### MIDI Signals Summary
+* **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
+* **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
+* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced repeat behavior.
+
 ## 🛠 Required Hardware
 
 This project is designed for a specific hardware footprint. Because it uses **8 pads, 4 mode switches, and 2 encoder buttons**, a multiplexer is mandatory.
 
 ![MIDI P0AH PLAY](images/1776264780911.jpg)
-
-### MIDI Signals Summary
-* **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
-* **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
-* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced repeat behavior.
 
 ### 1. Microcontroller
 *   **Recommended:** **Arduino Nano** or **Pro Mini** (ATmega328P).
