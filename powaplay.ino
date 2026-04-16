@@ -435,12 +435,12 @@ void loop() {
 
 void updateChannelFromEncoder(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
-    int newMidiChannel = getMidiValueFromEncoder(
-      midiChannel,
-      encoderVal[selected],
-      encoderPos[selected]
-    );
-    midiChannel = newMidiChannel > 15 ? 16 : newMidiChannel;
+    int delta = encoderVal[selected] - encoderPos[selected];
+    int wrappedChannel = ((int)midiChannel - 1 + delta) % 16;
+    if (wrappedChannel < 0) {
+      wrappedChannel += 16;
+    }
+    midiChannel = wrappedChannel + 1;
     display.clear();
     display.setColonOn(false);
     display.print("CH" + String(midiChannel));
@@ -450,9 +450,10 @@ void updateChannelFromEncoder(byte selected) {
 
 void updateBaseNoteFromEncoder(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
+    byte localPushNote = selectedPushPin != -1 ? pushNote[selectedPushPin] : (60 + globalNoteOffset);
     updateNotes(
       (getMidiValueFromEncoder(60+globalNoteOffset, encoderVal[selected], encoderPos[selected]) - 60),
-      getMidiValueFromEncoder(pushNote[selectedPushPin], encoderVal[selected], encoderPos[selected])
+      getMidiValueFromEncoder(localPushNote, encoderVal[selected], encoderPos[selected])
     );
   }
   encoderPos[selected] = encoderVal[selected];
@@ -513,9 +514,10 @@ void updateVelocityFromEncoder(byte selected) {
   if (encoderVal[selected] == encoderPos[selected]) {
     return;
   }
+  byte localPushVelocity = selectedPushPin != -1 ? pushVelocity[selectedPushPin] : globalVelocity;
   updateVelocity(
     getMidiValueFromEncoder(globalVelocity, encoderVal[selected], encoderPos[selected]),
-    getMidiValueFromEncoder(pushVelocity[selectedPushPin], encoderVal[selected], encoderPos[selected])
+    getMidiValueFromEncoder(localPushVelocity, encoderVal[selected], encoderPos[selected])
   );
   encoderPos[selected] = encoderVal[selected];
 }
@@ -727,7 +729,9 @@ void updateVelocity(byte globalMidiValue, byte localMidiValue) {
   }
   else {
     globalVelocity = globalMidiValue;
-    pushVelocity[selectedPushPin] = globalVelocity;
+    if (selectedPushPin != -1) {
+      pushVelocity[selectedPushPin] = globalVelocity;
+    }
     display.clear();
     display.print('v');
     displayPrint(globalVelocity, false, false);
