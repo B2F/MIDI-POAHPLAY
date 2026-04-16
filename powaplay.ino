@@ -7,7 +7,7 @@
 #include "SevenSegmentExtended.h"
 #include "SevenSegmentFun.h"
 #include <Encoder.h>
-#include <light_CD74HC4067.h>
+#include <CD74HC4067.h>
 #include <HCSR04.h>
 
 const unsigned long BAUD_RATE PROGMEM = 38400;

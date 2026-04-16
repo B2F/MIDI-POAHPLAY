@@ -82,6 +82,24 @@ On Windows, MIDI software cannot "see" Serial data directly. You need two tools:
 ### Alternative bridge solution
 For modern WSL compatible serial MIDI bridge, use: **[SerialMidi-WMS](https://github.com/B2F/SerialMidi-WMS)**
 
+### Firmware Flashing (PlatformIO)
+Use PlatformIO CLI from the repository root:
+
+1. Install PlatformIO Core (if needed):
+   * `python -m pip install -U platformio`
+2. Build firmware:
+   * `python -m platformio run -e nanoatmega328`
+3. Upload firmware:
+   * `python -m platformio run -e nanoatmega328 -t upload --upload-port <PORT>`
+4. Open serial monitor (firmware baud rate):
+   * `python -m platformio device monitor -p <PORT> -b 38400`
+
+Notes:
+* `-t upload` compiles automatically before uploading.
+* Replace `<PORT>` with your serial port (for example `COM3` on Windows or `/dev/ttyUSB0` on Linux).
+* If needed, list available ports with `python -m platformio device list`.
+* If upload fails because the port is busy, close serial monitor/bridge apps and retry.
+
 ---
 
 ## ⚠️ Troubleshooting
