@@ -1,41 +1,62 @@
 # MIDI P0AH PLAY (proto-serial)
 
-DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, CC performance controls, ultrasonic "D-Beam," repeat/gate behavior, pad lock/unlock, and MIDI clock sync.
+DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, arp performance controls, CC control lanes, ultrasonic "D-Beam," pad lock/latch workflows, and MIDI clock sync.
 
 ### MIDI Signals Summary
 * **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
 * **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
-* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced repeat behavior.
+* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced arp behavior.
 
 ![MIDI P0AH PLAY](images/1776264780911.jpg)
 
 ## ✅ Current Firmware Feature Set
 
-### Notes / Musical Engine
+### Musical Engine
 * 8 pads (`P1..P8`) mapped to semitone positions with optional scale remap.
 * Global velocity + per-pad velocity lock.
 * Global base note / transpose editing in Init workflow.
-* Global octave control (fader + encoder), with live retrigger of held pads.
-* Chord engine with **10 chord types**:
-  * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`
-* Scales currently available:
-  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`
+* Global octave control (fader + encoder), with note-layout updates applied live.
+* Chord engine with **14 chord types**:
+  * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`, `d7`, `5th`, `Ad9`, `m7b6`
+* Scale engine with **10 scale layouts**:
+  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `
+* Chord, scale, and arp selectors wrap around instead of stopping at the ends.
+
+### Arp / Gate
+* `SW_REPEAT` is now an **arp mode** rather than a simple note-repeat mode.
+* Arp playback uses the current 8-pad scale layout as its note pool and chord-voices each step through the selected chord.
+* Tempo/gate behavior is per pad, with scheduled NoteOff handling to avoid stuck or overly long repeated notes.
+* Pad latch/lock is available inside arp mode, so a pad can continue running after release.
+* Current arp types:
+
+| Label | Meaning |
+| :--- | :--- |
+| `NOtE` | Retrigger the current pad root/chord only |
+| `UP` | Walk upward through the valid pad-layout slots |
+| `dn` | Walk downward through the valid pad-layout slots |
+| `dU` | Bounce downward first, without repeating endpoints |
+| `Ud` | Bounce upward first, without repeating endpoints |
+| `rAnd` | Uniform random slot selection, repeats allowed |
+| `rnNo` | Random slot selection without immediate repeats |
+| `SHFL` | Shuffle valid slots, play the cycle, then reshuffle |
+| `CNVr` | Converge from the outside toward the center |
+| `Ordr` | Use pad press order, anchored by the first active pressed/latched pad |
+| `ASGN` | Stable as-played pad order |
+
+* Ordered arp modes (`Ordr`, `ASGN`) treat the **first active pressed/latched pad** as the anchor lane. Later pads extend the note pool instead of starting overlapping arp sequences.
 
 ### CC Engine
 * 2 editable CC lanes (`midiCC[0]`, `midiCC[1]`) with values from encoders/faders.
 * Pad CC presets (in CC mode):
-  * `P1→CC20`, `P2→CC21`, `P3→CC22`, `P4→CC23`,
-  * `P5→CC24`, `P6→CC25`, `P7→CC26`, `P8→CC27`
+  * `P1→CC91`, `P2→CC92`, `P3→CC93`, `P4→CC94`,
+  * `P5→CC95`, `P6→CC98`, `P7→CC99`, `P8→CC100`
 * CC preset display format on 4-digit screen:
-  * `C020 ... C027`
-
-### Repeat / Gate
-* Repeat clocking per pad, with lock/unlock behavior.
-* Repeat divisor editing.
-* Scheduled NoteOff gate to avoid stuck/overlapping repeat notes.
+  * `C091 ... C100`
 
 ### Sync / Transport / Safety
 * MIDI realtime handling: `CLOCK`, `START`, `STOP`, `CONTINUE`, `SPP`.
+* Incoming MIDI clock drives arp timing when transport sync is active.
+* During synced arp playback, note-layout changes (for example octave, chord, scale, or lock-related changes) take effect on the next scheduled step instead of forcing an immediate base-note restart.
 * Tick-based tempo LED display (one LED at a time).
 * Panic on Init-switch edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
 
@@ -99,26 +120,25 @@ Toggle the physical Mode Switches to change functionality:
   * Encoder 1 = Velocity, Encoder 2 = Octave.
   * Right encoder push: scale select.
   * Left encoder push: chord select.
+  * Chord and scale selectors wrap around.
   * Pad lock/unlock available via encoder-push + pad workflows.
 
 * **CC Mode (`SW_CC`)**
-  * Faders + (released) encoders edit CC values.
-  * **CC number selection with encoder push:**
-    * Hold **Left encoder push** (`P1SW`) to edit/select **CC lane 1**.
-      * Turning encoder 1 changes the CC number for lane 1.
-      * Pressing pads selects preset CC numbers for lane 1 (`P1..P8 => CC20..CC27`).
-    * Hold **Right encoder push** (`P2SW`) to edit/select **CC lane 2**.
-      * Turning encoder 2 changes the CC number for lane 2.
-      * Pressing pads selects preset CC numbers for lane 2 (`P1..P8 => CC20..CC27`).
-  * Preset CC labels are displayed as `C020..C027`.
+  * Faders edit CC values for lanes 1 and 2.
+  * With **no encoder push held**, encoder 1 and encoder 2 edit the CC values for lanes 1 and 2.
+  * Hold **Left encoder push** (`P1SW`) to edit/select **CC lane 2 number** with encoder 2 and select pad-based CC presets for lane 1.
+  * Hold **Right encoder push** (`P2SW`) to edit/select **CC lane 1 number** with encoder 1 and select pad-based CC presets for lane 2.
+  * Preset CC labels are displayed as `C091..C100`.
 
-* **Repeat Mode (`SW_REPEAT`)**
-  * Left encoder push: repeat speed/divisor edit.
-  * Pad repeat lock/unlock workflows available while in repeat context.
+* **Arp Mode (`SW_REPEAT`)**
+  * Left encoder push: arp rate / divisor edit.
+  * Right encoder push: arp type select.
+  * Arp selector wraps around.
+  * Pad arp lock/unlock workflows are available in arp context.
 
 * **Ultrasonic Mode (`SW_ULTRASONIC`)**
-  * Right encoder push: set ultrasonic target CC number.
-  * Left encoder push: set max ultrasonic distance range.
+  * Hold **Right encoder push** to set ultrasonic target CC number.
+  * Left encoder push + turn encoder 1: set max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
 * **Init / Setup Mode (`SW_PLAY` logic)**

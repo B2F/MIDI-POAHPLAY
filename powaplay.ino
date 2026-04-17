@@ -152,9 +152,6 @@ byte switches[4][2] = {
   {SW_REPEAT, REPEAT_MASK}
 };
 
-// @todo: ajouter un bouton save (sd card).
-// @todo: ajouter un bouton pour voir les réglages (velo, note, cc) dans le lcd.
-
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
 bool encoderSwitch1isActive = false;
@@ -532,6 +529,7 @@ void loop() {
     return;
   }
 
+  // @todo: show active paired setting on encoder push.
   bool anyEncoderPushActive = (leftPush == PUSHED || rightPush == PUSHED);
 
   // Encoders et faders (sans encoder push)
@@ -1490,8 +1488,6 @@ unsigned long getNextRepeatMicros(int pin) {
   unsigned long pushDuration = (float) getBeatMicros(1) * pinRepeatSpeed;
   unsigned long nextTriggerTime = pushedTime[pin] + (pushElapsedRepeats[pin] * pushDuration);
   return nextTriggerTime;
-  // @todo option sans quantize pour remplacer startTime par push repeat time.
-  // return startTime - 5000 + (pushElapsedRepeats[pin] * oneNoteFractionMicros) + oneNoteFractionMicros;
 }
 
 unsigned long getNoteMicros() {
@@ -1539,7 +1535,6 @@ void readSwitches() {
     }
   }
 
-  // @todo replace P1SW & P2SW with two new dedicated push buttons.
   mux.channel(P1SW);
   leftPush = digitalRead(MUXSIG);
   mux.channel(P2SW);
@@ -1660,7 +1655,6 @@ void updateArpRateFromEncoder(byte selected) {
   }
 }
 
-// @todo debug why slow.
 void updateUltrasonicCC(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
     ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderVal[selected], encoderPos[selected]);
