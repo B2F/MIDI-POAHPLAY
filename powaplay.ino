@@ -1304,15 +1304,18 @@ void sendNote(byte note, byte velocity, bool on) {
     offset < (MAX_NOTES - 1);
     offset++
   ) {
-    if (
-      (note + CHORDS[selectedChord][offset]) >= 128 ||
-      CHORDS[selectedChord][offset] == UNASSIGNED
-    ) {
-      return;
+    byte interval = CHORDS[selectedChord][offset];
+    if (interval == UNASSIGNED) {
+      // End of chord definition; do not leave function so magnet state can be updated.
+      break;
+    }
+    if ((note + interval) >= 128) {
+      // Skip invalid note but keep processing and update outputs below.
+      continue;
     }
     on ?
-      MIDI.sendNoteOn(note + CHORDS[selectedChord][offset], velocity, midiChannel) :
-      MIDI.sendNoteOff(note + CHORDS[selectedChord][offset], velocity, midiChannel);
+      MIDI.sendNoteOn(note + interval, velocity, midiChannel) :
+      MIDI.sendNoteOff(note + interval, velocity, midiChannel);
   }
 
   if (on) {
