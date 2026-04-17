@@ -469,13 +469,13 @@ void loop() {
     }
   }
   else if (checkMode(CC_MASK)) {
-    if (rightPush == PUSHED) {
-      updateMidiControlFromEncoder(1);
-      selectCCPreset(1);
-    }
     if (leftPush == PUSHED) {
-      updateMidiControlFromEncoder(0);
+      updateMidiControlFromEncoder(1);
       selectCCPreset(0);
+    }
+    if (rightPush == PUSHED) {
+      updateMidiControlFromEncoder(0);
+      selectCCPreset(1);
     }
   }
   else {
