@@ -423,24 +423,28 @@ void loop() {
     return;
   }
 
+  bool anyEncoderPushActive = (leftPush == PUSHED || rightPush == PUSHED);
+
   // Encoders et faders (sans encoder push)
   if (checkMode(CC_MASK)) {
     updateCCValueFromFader(0);
     updateCCValueFromFader(1);
-    if (rightPush == RELEASED) {
+
+    // In CC mode, a push on either encoder reserves interaction context,
+    // so both free-encoder CC-value updates are paused.
+    if (!anyEncoderPushActive) {
       updateMidiCCValueFromEncoder(0);
-    }
-    if (leftPush == RELEASED) {
       updateMidiCCValueFromEncoder(1);
     }
   }
   else {
     updateVelocityFromFader(0);
     updateOctaveFromFader(1);
-    if (rightPush == RELEASED) {
+
+    // Same reservation rule in non-CC mode: any encoder push pauses both
+    // free-encoder updates so pressed context keeps display/control priority.
+    if (!anyEncoderPushActive) {
       updateVelocityFromEncoder(0);
-    }
-    if (leftPush == RELEASED) {
       updateOctaveFromEncoder(1);
     }
   }
@@ -564,16 +568,18 @@ void updateOctaveFromFader(byte selected) {
     relativeValue = 0;
   }
   octave = round(relativeValue / 100) - 4;
-  display.clear();
-  if (octave >= 0) {
-    char label[8];
-    snprintf(label, sizeof(label), "%doct", octave);
-    display.print(label);
-  }
-  else {
-    char label[8];
-    snprintf(label, sizeof(label), "%doc", octave);
-    display.print(label);
+  if (!shouldSuppressLiveDisplay()) {
+    display.clear();
+    if (octave >= 0) {
+      char label[8];
+      snprintf(label, sizeof(label), "%doct", octave);
+      display.print(label);
+    }
+    else {
+      char label[8];
+      snprintf(label, sizeof(label), "%doc", octave);
+      display.print(label);
+    }
   }
   globalNoteOffset = octave * 12;
   faderPos[selected] = faderVal[selected];
@@ -822,18 +828,22 @@ int readEncoder(byte e) {
 void updateVelocity(byte globalMidiValue, byte localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
-    display.clear();
-    display.print('v');
-    displayPrint(localMidiValue, false, false);
+    if (!shouldSuppressLiveDisplay()) {
+      display.clear();
+      display.print('v');
+      displayPrint(localMidiValue, false, false);
+    }
   }
   else {
     globalVelocity = globalMidiValue;
     if (selectedPushPin != -1) {
       pushVelocity[selectedPushPin] = globalVelocity;
     }
-    display.clear();
-    display.print('v');
-    displayPrint(globalVelocity, false, false);
+    if (!shouldSuppressLiveDisplay()) {
+      display.clear();
+      display.print('v');
+      displayPrint(globalVelocity, false, false);
+    }
   }
 }
 
@@ -1166,8 +1176,12 @@ bool sendControlChangeIfChanged(byte lane, byte ccNumber, byte ccValue) {
   return true;
 }
 
-bool shouldSuppressLiveCCDisplay() {
+bool shouldSuppressLiveDisplay() {
   return (leftPush == PUSHED || rightPush == PUSHED);
+}
+
+bool shouldSuppressLiveCCDisplay() {
+  return shouldSuppressLiveDisplay();
 }
 
 void updateMidiCCValueFromEncoder(byte selected) {
