@@ -61,6 +61,8 @@ MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
 
 byte midiCC[2] = {20, 21};
 byte midiCCValue[2] = {63, 63};
+byte lastSentCCNumber[2] = {255, 255};
+byte lastSentCCValue[2] = {255, 255};
 // https://professionalcomposers.com/midi-cc-list/
 // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
 const byte midiCCPresets[NB_PUSH] PROGMEM = {91, 92, 93, 94, 95, 98, 99, 100};
@@ -110,9 +112,20 @@ const byte echoPin PROGMEM = 6;
 
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
-byte MIN_ULTRASONIC_DISTANCE_CM = 5;
-byte maxUltrasonicDistanceCm = 10;
+byte MIN_ULTRASONIC_DISTANCE_CM = 1;
+int maxUltrasonicDistanceCm = 10;
 byte ultrasonicCC = 100;
+byte lastUltrasonicControlValue = 255;
+const int MAX_ULTRASONIC_DISTANCE_CAP_CM = 35;
+const float ULTRASONIC_SMOOTHING_ALPHA = 0.35;
+const byte ULTRASONIC_CC_DEADBAND = 2;
+const unsigned long ULTRASONIC_MIN_UPDATE_INTERVAL_US = 15000;
+int ultrasonicMedianBuffer[3] = {0, 0, 0};
+byte ultrasonicMedianCount = 0;
+byte ultrasonicMedianIndex = 0;
+int lastValidUltrasonicDistanceCm = -1;
+float smoothedUltrasonicDistanceCm = -1.0;
+unsigned long lastUltrasonicUpdateMicros = 0;
 
 // Magnet
 
@@ -226,11 +239,25 @@ void reinit() {
   midiCC[1] = 21;
   midiCCValue[0] = 63;
   midiCCValue[1] = 63;
+  lastSentCCNumber[0] = 255;
+  lastSentCCNumber[1] = 255;
+  lastSentCCValue[0] = 255;
+  lastSentCCValue[1] = 255;
   midiChannel = 2;
   programChange = 0;
   globalVelocity = 127;
   globalNoteOffset = 0;
   ultrasonicCC = 100;
+  maxUltrasonicDistanceCm = 10;
+  lastUltrasonicControlValue = 255;
+  ultrasonicMedianBuffer[0] = 0;
+  ultrasonicMedianBuffer[1] = 0;
+  ultrasonicMedianBuffer[2] = 0;
+  ultrasonicMedianCount = 0;
+  ultrasonicMedianIndex = 0;
+  lastValidUltrasonicDistanceCm = -1;
+  smoothedUltrasonicDistanceCm = -1.0;
+  lastUltrasonicUpdateMicros = 0;
   currentPlayMode = B00000000;
   midiCCIsActive = false;
   ultrasonicSensorIsActive = false;
@@ -1129,17 +1156,30 @@ void updateMidiControlFromEncoder(byte selected) {
   }
 }
 
+bool sendControlChangeIfChanged(byte lane, byte ccNumber, byte ccValue) {
+  if (lastSentCCNumber[lane] == ccNumber && lastSentCCValue[lane] == ccValue) {
+    return false;
+  }
+  MIDI.sendControlChange(ccNumber, ccValue, midiChannel);
+  lastSentCCNumber[lane] = ccNumber;
+  lastSentCCValue[lane] = ccValue;
+  return true;
+}
+
 void updateMidiCCValueFromEncoder(byte selected) {
   if (encoderVal[selected] == encoderPos[selected]) {
     return;
   }
-  midiCCValue[selected] = getMidiValueFromEncoder(
+  byte newCCValue = getMidiValueFromEncoder(
     midiCCValue[selected],
     encoderVal[selected],
     encoderPos[selected]
   );
-  MIDI.sendControlChange(midiCC[selected], midiCCValue[selected], midiChannel);
   encoderPos[selected] = encoderVal[selected];
+  if (!sendControlChangeIfChanged(selected, midiCC[selected], newCCValue)) {
+    return;
+  }
+  midiCCValue[selected] = newCCValue;
   display.clear();
   display.print('c');
   displayPrint(midiCCValue[selected], false, false);
@@ -1150,8 +1190,11 @@ void updateCCValueFromFader(byte selected) {
     return;
   }
   faderPos[selected] = faderVal[selected];
-  midiCCValue[selected] = getMidiValueFromFader(selected);
-  MIDI.sendControlChange(midiCC[selected], midiCCValue[selected], midiChannel);
+  byte newCCValue = getMidiValueFromFader(selected);
+  if (!sendControlChangeIfChanged(selected, midiCC[selected], newCCValue)) {
+    return;
+  }
+  midiCCValue[selected] = newCCValue;
   display.clear();
   display.print('c');
   displayPrint(midiCCValue[selected], false, false);
@@ -1216,6 +1259,20 @@ void updateUltrasonicCC(byte selected) {
 void updateUltrasonicDistance(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
     maxUltrasonicDistanceCm = maxUltrasonicDistanceCm + (encoderVal[selected] - encoderPos[selected]);
+
+    // Allow negative distances to reverse ultrasonic CC mapping.
+    if (maxUltrasonicDistanceCm > MAX_ULTRASONIC_DISTANCE_CAP_CM) {
+      maxUltrasonicDistanceCm = MAX_ULTRASONIC_DISTANCE_CAP_CM;
+    }
+    if (maxUltrasonicDistanceCm < -MAX_ULTRASONIC_DISTANCE_CAP_CM) {
+      maxUltrasonicDistanceCm = -MAX_ULTRASONIC_DISTANCE_CAP_CM;
+    }
+
+    // Keep 0 unavailable so sign always means CC direction mode.
+    if (maxUltrasonicDistanceCm == 0) {
+      maxUltrasonicDistanceCm = (encoderVal[selected] >= encoderPos[selected]) ? 1 : -1;
+    }
+
     display.clear();
     display.print('d');
     displayPrint(maxUltrasonicDistanceCm, false, false);
@@ -1223,13 +1280,140 @@ void updateUltrasonicDistance(byte selected) {
   }
 }
 
+int medianOf3(int a, int b, int c) {
+  if (a > b) {
+    int tmp = a;
+    a = b;
+    b = tmp;
+  }
+  if (b > c) {
+    int tmp = b;
+    b = c;
+    c = tmp;
+  }
+  if (a > b) {
+    int tmp = a;
+    a = b;
+    b = tmp;
+  }
+  return b;
+}
+
+void addUltrasonicSample(int sampleCm) {
+  ultrasonicMedianBuffer[ultrasonicMedianIndex] = sampleCm;
+  ultrasonicMedianIndex = (ultrasonicMedianIndex + 1) % 3;
+  if (ultrasonicMedianCount < 3) {
+    ultrasonicMedianCount++;
+  }
+}
+
+int getUltrasonicMedianCm() {
+  if (ultrasonicMedianCount == 0) {
+    return 0;
+  }
+  if (ultrasonicMedianCount < 3) {
+    long sum = 0;
+    for (byte i = 0; i < ultrasonicMedianCount; i++) {
+      sum += ultrasonicMedianBuffer[i];
+    }
+    return (int) (sum / ultrasonicMedianCount);
+  }
+  return medianOf3(
+    ultrasonicMedianBuffer[0],
+    ultrasonicMedianBuffer[1],
+    ultrasonicMedianBuffer[2]
+  );
+}
+
 void trackUltrasonicChanges() {
-  byte distance = distanceSensor.measureDistanceCm();
-  distance = distance > maxUltrasonicDistanceCm ? maxUltrasonicDistanceCm : distance;
-  distance = distance < MIN_ULTRASONIC_DISTANCE_CM ? MIN_ULTRASONIC_DISTANCE_CM : distance;
-  float distancePercentage = 1 - ((float) (distance - MIN_ULTRASONIC_DISTANCE_CM) / (float) (maxUltrasonicDistanceCm - MIN_ULTRASONIC_DISTANCE_CM));
-  byte ultrasonicControlValue = distancePercentage * 127;
-  MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
+  unsigned long now = micros();
+  if ((long) (now - lastUltrasonicUpdateMicros) < (long) ULTRASONIC_MIN_UPDATE_INTERVAL_US) {
+    return;
+  }
+  lastUltrasonicUpdateMicros = now;
+
+  int measuredDistanceCm = (int) distanceSensor.measureDistanceCm();
+  if (measuredDistanceCm > 0) {
+    addUltrasonicSample(measuredDistanceCm);
+    int medianDistanceCm = getUltrasonicMedianCm();
+
+    if (smoothedUltrasonicDistanceCm < 0.0) {
+      smoothedUltrasonicDistanceCm = medianDistanceCm;
+    }
+    else {
+      smoothedUltrasonicDistanceCm =
+        (ULTRASONIC_SMOOTHING_ALPHA * (float) medianDistanceCm)
+        + ((1.0 - ULTRASONIC_SMOOTHING_ALPHA) * smoothedUltrasonicDistanceCm);
+    }
+
+    measuredDistanceCm = (int) round(smoothedUltrasonicDistanceCm);
+    lastValidUltrasonicDistanceCm = measuredDistanceCm;
+  }
+  else {
+    if (lastValidUltrasonicDistanceCm < 0) {
+      return;
+    }
+    measuredDistanceCm = lastValidUltrasonicDistanceCm;
+  }
+
+  int configuredDistanceCm = maxUltrasonicDistanceCm;
+  int absoluteMaxDistanceCm = abs(configuredDistanceCm);
+
+  if (absoluteMaxDistanceCm < 1) {
+    absoluteMaxDistanceCm = 1;
+  }
+  if (absoluteMaxDistanceCm > MAX_ULTRASONIC_DISTANCE_CAP_CM) {
+    absoluteMaxDistanceCm = MAX_ULTRASONIC_DISTANCE_CAP_CM;
+  }
+  if (absoluteMaxDistanceCm < MIN_ULTRASONIC_DISTANCE_CM) {
+    absoluteMaxDistanceCm = MIN_ULTRASONIC_DISTANCE_CM;
+  }
+
+  if (measuredDistanceCm > absoluteMaxDistanceCm) {
+    measuredDistanceCm = absoluteMaxDistanceCm;
+  }
+  if (measuredDistanceCm < MIN_ULTRASONIC_DISTANCE_CM) {
+    measuredDistanceCm = MIN_ULTRASONIC_DISTANCE_CM;
+  }
+
+  // blockedPercentage: 1.0 when fully blocked (near), 0.0 when unblocked (far).
+  int distanceSpanCm = absoluteMaxDistanceCm - MIN_ULTRASONIC_DISTANCE_CM;
+  if (distanceSpanCm <= 0) {
+    distanceSpanCm = 1;
+  }
+  float blockedPercentage = 1.0 - (
+    (float) (measuredDistanceCm - MIN_ULTRASONIC_DISTANCE_CM)
+    /
+    (float) distanceSpanCm
+  );
+
+  byte ultrasonicControlValue;
+  if (configuredDistanceCm < 0) {
+    // Reversed mode: far -> 0, blocked -> 127
+    ultrasonicControlValue = blockedPercentage * 127;
+  }
+  else {
+    // Default mode: far -> 127, blocked -> 0
+    ultrasonicControlValue = (1.0 - blockedPercentage) * 127;
+  }
+
+  if (lastUltrasonicControlValue != 255) {
+    int ccDelta = (int) ultrasonicControlValue - (int) lastUltrasonicControlValue;
+    if (ccDelta < 0) {
+      ccDelta *= -1;
+    }
+    if (ccDelta < ULTRASONIC_CC_DEADBAND) {
+      return;
+    }
+  }
+
+  if (ultrasonicControlValue != lastUltrasonicControlValue) {
+    MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
+    display.clear();
+    display.print('c');
+    displayPrint(ultrasonicControlValue, false, false);
+    lastUltrasonicControlValue = ultrasonicControlValue;
+  }
 }
 
 void selectCCPreset(byte selected) {
