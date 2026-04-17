@@ -112,7 +112,7 @@ const byte echoPin PROGMEM = 6;
 
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
-byte MIN_ULTRASONIC_DISTANCE_CM = 1;
+byte MIN_ULTRASONIC_DISTANCE_CM = 2;
 int maxUltrasonicDistanceCm = 10;
 byte ultrasonicCC = 100;
 byte lastUltrasonicControlValue = 255;
