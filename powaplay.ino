@@ -157,7 +157,6 @@ byte switches[4][2] = {
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
-bool noteRepeatIsActive = false;
 bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 byte rightPush = RELEASED;
@@ -183,6 +182,23 @@ unsigned long oneNoteTime = 0;
 unsigned long stopTime = 0;
 int octave = 0;
 
+const byte NB_ARP_TYPES PROGMEM = 6;
+const byte ARP_TYPE_SINGLE_NOTE PROGMEM = 0;
+const byte ARP_TYPE_UP PROGMEM = 1;
+const byte ARP_TYPE_DOWN PROGMEM = 2;
+const byte ARP_TYPE_DOWN_UP PROGMEM = 3;
+const byte ARP_TYPE_UP_DOWN PROGMEM = 4;
+const byte ARP_TYPE_RANDOM PROGMEM = 5;
+byte selectedArpType = ARP_TYPE_SINGLE_NOTE;
+const char* ARP_NAMES[NB_ARP_TYPES] = {
+  "NOtE",
+  " UP ",
+  " dn ",
+  " dU ",
+  " Ud ",
+  "rAnd"
+};
+
 const byte pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
 byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
@@ -191,10 +207,12 @@ byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1
 // Track last NoteOn per pad so NoteOff always matches, even if octave/scale changes while held.
 byte padActiveNote[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool padNoteIsOn[NB_PUSH] = {false,false,false,false,false,false,false,false};
-// For repeat mode: schedule a NoteOff some microseconds after NoteOn to create a real gate.
+// For arp playback: schedule a NoteOff some microseconds after NoteOn to create a real gate.
 unsigned long padScheduledOffMicros[NB_PUSH] = {0,0,0,0,0,0,0,0};
-// Nb elapsed repeats timeframes (not necessarily used) since last start time:
+// Nb elapsed arp timeframes since last start time.
 unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
+byte arpSlotIndex[NB_PUSH] = {255,255,255,255,255,255,255,255};
+int arpDirection[NB_PUSH] = {1,1,1,1,1,1,1,1};
 byte isPushed[NB_PUSH] = {
   RELEASED,
   RELEASED,
@@ -233,6 +251,34 @@ const char* CHORD_NAMES[NB_CHORDS] = {
 // Scales
 const byte NB_SCALES PROGMEM = 5;
 byte selectedScale = 0;
+const byte SCALES[NB_SCALES][MAX_NOTES] = {
+  {0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 1, 2, 2, 3, 4, 5, 5}, // Major
+  {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
+  {0, 1, 4, 1, 2, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues
+  {1, 1, 3, 2, 1, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues minor
+};
+const byte CHORDS[NB_CHORDS][MAX_NOTES] = {
+  {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
+  {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
+  {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MIN
+  {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // AUG
+  {0, 3, 6, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // dIM
+  {0, 2, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS2
+  {0, 5, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS4
+  {0, 4, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // 7th
+  {0, 4, 7, 11, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MAJ7
+  {0, 3, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MIN7
+};
+
+void resetArpState(byte pin, unsigned long referenceTime = 0);
+void resetAllArpStates(unsigned long referenceTime = 0);
+bool isPadArpActive(byte pin);
+void syncHeldPadsAfterNoteLayoutChange();
+bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity);
+bool triggerPadRootNote(byte sourcePad, byte note, byte velocity, bool state);
+byte getArpSourcePad(byte sourcePad);
+void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos);
 
 void reinit() {
   midiCC[0] = 20;
@@ -261,7 +307,6 @@ void reinit() {
   currentPlayMode = B00000000;
   midiCCIsActive = false;
   ultrasonicSensorIsActive = false;
-  noteRepeatIsActive = false;
   encoderSwitch1isActive = false;
   encoderSwitch2isActive = false;
   rightPush = RELEASED;
@@ -285,6 +330,12 @@ void reinit() {
     pushElapsedRepeats[i] = 0;
   }
   for (byte i = 0; i < 8; i++) {
+    arpSlotIndex[i] = UNASSIGNED;
+  }
+  for (byte i = 0; i < 8; i++) {
+    arpDirection[i] = 1;
+  }
+  for (byte i = 0; i < 8; i++) {
     isPushed[i] = RELEASED;
   }
   for (byte i = 0; i < 8; i++) {
@@ -293,6 +344,7 @@ void reinit() {
   selectedPushPin = -1;
   octave = 0;
   selectedChord = 0;
+  selectedArpType = ARP_TYPE_SINGLE_NOTE;
 
   for (byte i = 0; i < 8; i++) {
     padNoteIsOn[i] = false;
@@ -371,7 +423,7 @@ void loop() {
   updateMidiSerial();
   processScheduledNoteOffs();
   if (playFlag == false) {
-    playNotesRepeat();
+    playPadsArp();
   }
 
   readSwitches();
@@ -460,11 +512,11 @@ void loop() {
   }
   else if (checkMode(REPEAT_MASK)) {
     if (leftPush == PUSHED) {
-      updateNoteRepeatSpeedFromEncoder(1);
+      updateArpRateFromEncoder(1);
       updatePadsRepeatLockUnlock(true);
     }
     if (rightPush == PUSHED) {
-      // @todo updateRepeatOctaveUpDown
+      arpSelect(0);
       updatePadsRepeatLockUnlock(false);
     }
   }
@@ -554,6 +606,28 @@ void chordSelect(byte selected) {
   display.print(CHORD_NAMES[selectedChord]);
   display.setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
+  syncHeldPadsAfterNoteLayoutChange();
+}
+
+void arpSelect(byte selected) {
+
+  encoderVal[selected] = readEncoder(selected);
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  if (encoderVal[selected] > encoderPos[selected]) {
+    selectedArpType = selectedArpType < (NB_ARP_TYPES - 1) ? selectedArpType + 1 : selectedArpType;
+  }
+  else if (selectedArpType > 0) {
+    selectedArpType--;
+  }
+
+  display.clear();
+  display.print(ARP_NAMES[selectedArpType]);
+  display.setColonOn(false);
+  encoderPos[selected] = encoderVal[selected];
+  resetAllArpStates();
 }
 
 void updateOctaveFromFader(byte selected) {
@@ -631,6 +705,7 @@ bool updateMidiSerial() {
     nbElapsedNotes = 0;
     // Re-align beat phase on transport start.
     midiCLockTick = 0;
+    resetAllArpStates(loopTime);
     displayPrint("PLAY", false, true);
   }
   if (serialByte == MIDI_STOP) {
@@ -656,7 +731,7 @@ bool updateMidiSerial() {
       nbElapsedNotes++;
     }
 
-    playNotesRepeat();
+    playPadsArp();
   }
 }
 
@@ -695,50 +770,20 @@ void scaleSelect(byte selected) {
   display.print(SCALES_NAMES[selectedScale]);
   display.setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
+  syncHeldPadsAfterNoteLayoutChange();
 }
 
 void playPush(byte pin, bool state) {
-
-  // @todo complete & fix
-  byte SCALES[NB_SCALES][MAX_NOTES] = {
-    {0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 1, 2, 2, 3, 4, 5, 5}, // Major
-    {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
-    {0, 1, 4, 1, 2, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues
-    {1, 1, 3, 2, 1, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues minor
-  };
-
-  byte currentVelocity = pushVelocity[pin];
-  byte currentNote = pushNote[pin];
-  if (!pushSettingsLocked[pin]) {
-    currentVelocity = globalVelocity;
-    currentNote += globalNoteOffset;
-  }
-
-  if (SCALES[selectedScale][pin] == UNASSIGNED) {
+  byte currentVelocity = 0;
+  byte currentNote = 0;
+  if (!getPadPlaybackState(pin, currentNote, currentVelocity)) {
+    if (!state && padNoteIsOn[pin]) {
+      sendNote(padActiveNote[pin], 0, false);
+      padNoteIsOn[pin] = false;
+    }
     return;
   }
-
-  currentNote += SCALES[selectedScale][pin];
-
-  if (state) {
-    // Ensure we don't leave a previous note on (important for repeat & live transposition)
-    if (padNoteIsOn[pin]) {
-      sendNote(padActiveNote[pin], 0, false);
-      padNoteIsOn[pin] = false;
-    }
-
-    padActiveNote[pin] = currentNote;
-    padNoteIsOn[pin] = true;
-    sendNote(currentNote, currentVelocity, true);
-  }
-  else {
-    // Prefer turning off what we actually turned on.
-    if (padNoteIsOn[pin]) {
-      sendNote(padActiveNote[pin], 0, false);
-      padNoteIsOn[pin] = false;
-    }
-  }
+  triggerPadRootNote(pin, currentNote, currentVelocity, state);
 }
 
 byte getMidiValueFromFader(byte selected) {
@@ -861,6 +906,7 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
     const char* note = getNoteFromMidiValue(60+globalNoteOffset);
     displayPrintString(note);
   }
+  syncHeldPadsAfterNoteLayoutChange();
 }
 
 void moveOctave(bool up) {
@@ -897,18 +943,7 @@ void moveOctave(bool up) {
 void retriggerHeldPads() {
   // For each currently-held pad: NoteOff the previously sounding note, then NoteOn the new one.
   // This avoids stuck notes and gives live transposition.
-  for (byte p = 0; p < NB_PUSH; p++) {
-    if (isPushed[p] != PUSHED) {
-      continue;
-    }
-    if (padNoteIsOn[p]) {
-      // Use velocity 0 for safety / compatibility.
-      sendNote(padActiveNote[p], 0, false);
-      padNoteIsOn[p] = false;
-    }
-    // Recompute and trigger the new note.
-    playPush(p, true);
-  }
+  syncHeldPadsAfterNoteLayoutChange();
 }
 
 unsigned long getRepeatGateMicros(byte pin) {
@@ -943,6 +978,162 @@ void processScheduledNoteOffs() {
   }
 }
 
+void resetArpState(byte pin, unsigned long referenceTime) {
+  if (referenceTime == 0) {
+    referenceTime = micros();
+  }
+  pushedTime[pin] = referenceTime;
+  pushElapsedRepeats[pin] = 0;
+  arpSlotIndex[pin] = UNASSIGNED;
+  arpDirection[pin] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+}
+
+void resetAllArpStates(unsigned long referenceTime) {
+  if (referenceTime == 0) {
+    referenceTime = micros();
+  }
+  for (byte p = 0; p < NB_PUSH; p++) {
+    resetArpState(p, referenceTime);
+  }
+}
+
+bool isPadArpActive(byte pin) {
+  return repeatIsLocked[pin] == true || (checkMode(REPEAT_MASK) && isPushed[pin] == PUSHED);
+}
+
+void syncHeldPadsAfterNoteLayoutChange() {
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (!padNoteIsOn[p] && isPushed[p] != PUSHED && !repeatIsLocked[p]) {
+      continue;
+    }
+
+    if (padNoteIsOn[p]) {
+      sendNote(padActiveNote[p], 0, false);
+      padNoteIsOn[p] = false;
+    }
+    padScheduledOffMicros[p] = 0;
+
+    if (isPadArpActive(p)) {
+      continue;
+    }
+    if (isPushed[p] == PUSHED) {
+      playPush(p, true);
+    }
+  }
+}
+
+bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
+  currentVelocity = pushVelocity[pin];
+  int noteValue = pushNote[pin];
+  if (!pushSettingsLocked[pin]) {
+    currentVelocity = globalVelocity;
+    noteValue += globalNoteOffset;
+  }
+
+  if (SCALES[selectedScale][pin] == UNASSIGNED) {
+    return false;
+  }
+
+  noteValue += SCALES[selectedScale][pin];
+  if (noteValue < 0) {
+    noteValue = 0;
+  }
+  if (noteValue > 127) {
+    noteValue = 127;
+  }
+  currentNote = noteValue;
+  return true;
+}
+
+bool triggerPadRootNote(byte sourcePad, byte note, byte velocity, bool state) {
+  if (state) {
+    if (padNoteIsOn[sourcePad]) {
+      sendNote(padActiveNote[sourcePad], 0, false);
+      padNoteIsOn[sourcePad] = false;
+    }
+
+    padActiveNote[sourcePad] = note;
+    padNoteIsOn[sourcePad] = true;
+    sendNote(note, velocity, true);
+    return true;
+  }
+
+  if (padNoteIsOn[sourcePad]) {
+    sendNote(padActiveNote[sourcePad], 0, false);
+    padNoteIsOn[sourcePad] = false;
+  }
+  return true;
+}
+
+byte getArpSourcePad(byte sourcePad) {
+  byte arpPads[MAX_NOTES];
+  byte validCount = 0;
+  byte startPos = 0;
+  buildArpSlotPads(sourcePad, arpPads, validCount, startPos);
+  if (validCount == 0) {
+    return UNASSIGNED;
+  }
+
+  if (selectedArpType == ARP_TYPE_SINGLE_NOTE || validCount < 2) {
+    return arpPads[startPos];
+  }
+
+  if (arpSlotIndex[sourcePad] == UNASSIGNED || arpSlotIndex[sourcePad] >= validCount) {
+    arpSlotIndex[sourcePad] = startPos;
+    arpDirection[sourcePad] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+  }
+
+  byte currentPos = arpSlotIndex[sourcePad];
+  byte chosenPad = arpPads[currentPos];
+
+  if (selectedArpType == ARP_TYPE_UP) {
+    arpSlotIndex[sourcePad] = (currentPos + 1) % validCount;
+  }
+  else if (selectedArpType == ARP_TYPE_DOWN) {
+    arpSlotIndex[sourcePad] = (currentPos == 0) ? validCount - 1 : currentPos - 1;
+  }
+  else if (selectedArpType == ARP_TYPE_RANDOM) {
+    chosenPad = arpPads[random(validCount)];
+  }
+  else {
+    int nextPos = (int) currentPos + arpDirection[sourcePad];
+    if (nextPos < 0 || nextPos >= validCount) {
+      arpDirection[sourcePad] *= -1;
+      nextPos = (int) currentPos + arpDirection[sourcePad];
+    }
+    arpSlotIndex[sourcePad] = nextPos;
+  }
+
+  return chosenPad;
+}
+
+void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos) {
+  validCount = 0;
+  startPos = 0;
+  bool foundStart = false;
+
+  for (byte p = 0; p < NB_PUSH; p++) {
+    byte currentNote = 0;
+    byte currentVelocity = 0;
+    if (!getPadPlaybackState(p, currentNote, currentVelocity)) {
+      continue;
+    }
+    arpPads[validCount] = p;
+    if (!foundStart && p >= sourcePad) {
+      startPos = validCount;
+      foundStart = true;
+    }
+    validCount++;
+  }
+
+  if (validCount == 0) {
+    return;
+  }
+  if (!foundStart) {
+    startPos = 0;
+  }
+}
+
 void panicAllNotesOff() {
   // Send All Notes Off (CC123) + All Sound Off (CC120), then clear local tracking.
   // This is a safety net if something ever gets stuck.
@@ -958,6 +1149,7 @@ void panicAllNotesOff() {
     padScheduledOffMicros[p] = 0;
     isPushed[p] = RELEASED;
     repeatIsLocked[p] = false;
+    resetArpState(p);
   }
 }
 
@@ -980,6 +1172,7 @@ void updatePadsLock(bool lock) {
       display.setColonOn(false);
     }
   }
+  syncHeldPadsAfterNoteLayoutChange();
 }
 
 void updatePadsRepeatLockUnlock(bool isLocked) {
@@ -997,9 +1190,11 @@ void updatePadsRepeatLockUnlock(bool isLocked) {
         padNoteIsOn[p] = false;
       }
       padScheduledOffMicros[p] = 0;
+      resetArpState(p);
     }
     else {
       displayPrintString("Lock");
+      padScheduledOffMicros[p] = 0;
     }
     repeatIsLocked[p] = isLocked;
   }
@@ -1016,6 +1211,7 @@ void updatePads() {
 
       isPushed[p] = PUSHED;
       selectedPushPin = p;
+      resetArpState(p);
 
       if (!checkMode(CC_MASK) || (rightPush == RELEASED && leftPush == RELEASED)) {
         pushedTime[p] = micros();
@@ -1034,18 +1230,20 @@ void updatePads() {
         padNoteIsOn[p] = false;
       }
       padScheduledOffMicros[p] = 0;
+      if (!repeatIsLocked[p]) {
+        resetArpState(p);
+      }
     }
   }
 }
 
-void playNotesRepeat() {
+void playPadsArp() {
   for (byte pin = 0; pin < NB_PUSH; pin++) {
     if (
-      (isPushed[pin] == RELEASED) ||
+      (isPushed[pin] == RELEASED && repeatIsLocked[pin] == false) ||
       (!checkMode(REPEAT_MASK) && repeatIsLocked[pin] == false)
     ) {
-      pushedTime[pin] = getNextRepeatMicros(pin);
-      pushElapsedRepeats[pin] = 0;
+      resetArpState(pin, getNextRepeatMicros(pin));
     }
     unsigned long nextCap = getNextRepeatMicros(pin);
     if (nextCap != 0 && micros() > nextCap) {
@@ -1054,9 +1252,17 @@ void playNotesRepeat() {
         repeatIsLocked[pin] == true
       ) {
         pushElapsedRepeats[pin]++;
-        playPush(pin, true);
-        // Create a real gate time for repeat notes.
-        padScheduledOffMicros[pin] = micros() + getRepeatGateMicros(pin);
+        byte arpPad = getArpSourcePad(pin);
+        if (arpPad == UNASSIGNED) {
+          continue;
+        }
+        byte currentNote = 0;
+        byte currentVelocity = 0;
+        if (getPadPlaybackState(arpPad, currentNote, currentVelocity)) {
+          triggerPadRootNote(pin, currentNote, currentVelocity, true);
+          // Create a real gate time for arp notes.
+          padScheduledOffMicros[pin] = micros() + getRepeatGateMicros(pin);
+        }
       }
     }
   }
@@ -1233,7 +1439,7 @@ void updateVelocityFromFader(byte selected) {
   updateVelocity(newMidiValue, newMidiValue);
 }
 
-void updateNoteRepeatSpeedFromEncoder(byte selected) {
+void updateArpRateFromEncoder(byte selected) {
 
   if (aPadIsPushed()) {
     return;
@@ -1241,7 +1447,7 @@ void updateNoteRepeatSpeedFromEncoder(byte selected) {
 
   bool changed = false;
   byte tmpRepeatSpeedDivisor = repeatSpeedDivisor;
-  if (pushSettingsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     tmpRepeatSpeedDivisor = pushRepeatSpeed[selectedPushPin][1];
   }
 
@@ -1256,10 +1462,11 @@ void updateNoteRepeatSpeedFromEncoder(byte selected) {
   }
   if (changed) {
     repeatSpeedDivisor = tmpRepeatSpeedDivisor;
-    pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
+    if (selectedPushPin != -1) {
+      pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
+    }
     for (byte pad = 0; pad < NB_PUSH; pad++) {
-      pushElapsedRepeats[pad] = 0;
-      pushedTime[pad] = micros();
+      resetArpState(pad);
     }
     display.clear();
     char label[6];
@@ -1494,24 +1701,9 @@ bool checkMode(byte mask) {
 }
 
 void sendNote(byte note, byte velocity, bool on) {
-
-  // @see https://spinditty.com/learning/chord-building-for-musicians
-  byte CHORDS[NB_CHORDS][MAX_NOTES] = {
-    {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
-    {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
-    {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MIN
-    {0, 4, 8, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // AUG
-    {0, 3, 6, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // dIM
-    {0, 2, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS2
-    {0, 5, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // SUS4
-    {0, 4, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // 7th
-    {0, 4, 7, 11, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MAJ7
-    {0, 3, 7, 10, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED},          // MIN7
-  };
-
   for (
     byte offset = 0;
-    offset < (MAX_NOTES - 1);
+    offset < MAX_NOTES;
     offset++
   ) {
     byte interval = CHORDS[selectedChord][offset];
