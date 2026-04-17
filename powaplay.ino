@@ -36,7 +36,7 @@ const byte P2SW PROGMEM = 14;
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
 
-Encoder encoder[NB_ENCODERS] = {P1, P2};
+Encoder* encoder[NB_ENCODERS] = {&P1, &P2};
 // Old state:
 int encoderPos[NB_ENCODERS] = {0, 0};
 // New state:
@@ -810,8 +810,8 @@ int readFader(byte selected) {
 }
 
 int readEncoder(byte e) {
-  int position = encoder[e].read();
-  if (position != 0 && encoderPos[e] != position) {
+  int position = encoder[e]->read();
+  if (encoderPos[e] != position) {
     return position;
   }
   else {
@@ -1166,6 +1166,10 @@ bool sendControlChangeIfChanged(byte lane, byte ccNumber, byte ccValue) {
   return true;
 }
 
+bool shouldSuppressLiveCCDisplay() {
+  return (leftPush == PUSHED || rightPush == PUSHED);
+}
+
 void updateMidiCCValueFromEncoder(byte selected) {
   if (encoderVal[selected] == encoderPos[selected]) {
     return;
@@ -1180,6 +1184,9 @@ void updateMidiCCValueFromEncoder(byte selected) {
     return;
   }
   midiCCValue[selected] = newCCValue;
+  if (shouldSuppressLiveCCDisplay()) {
+    return;
+  }
   display.clear();
   display.print('c');
   displayPrint(midiCCValue[selected], false, false);
@@ -1195,6 +1202,9 @@ void updateCCValueFromFader(byte selected) {
     return;
   }
   midiCCValue[selected] = newCCValue;
+  if (shouldSuppressLiveCCDisplay()) {
+    return;
+  }
   display.clear();
   display.print('c');
   displayPrint(midiCCValue[selected], false, false);
@@ -1409,9 +1419,11 @@ void trackUltrasonicChanges() {
 
   if (ultrasonicControlValue != lastUltrasonicControlValue) {
     MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
-    display.clear();
-    display.print('c');
-    displayPrint(ultrasonicControlValue, false, false);
+    if (!shouldSuppressLiveCCDisplay()) {
+      display.clear();
+      display.print('c');
+      displayPrint(ultrasonicControlValue, false, false);
+    }
     lastUltrasonicControlValue = ultrasonicControlValue;
   }
 }
