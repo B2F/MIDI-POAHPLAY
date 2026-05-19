@@ -275,6 +275,7 @@ const char* CHORD_NAMES[NB_CHORDS] = {
 
 // Scales
 const byte NB_SCALES PROGMEM = 10;
+const byte SCALE_INDEX_DRUM PROGMEM = 8;
 byte selectedScale = 0;
 const char* SCALE_NAMES[NB_SCALES] = {
   "SEMI",
@@ -300,6 +301,9 @@ const byte SCALES[NB_SCALES][MAX_NOTES] = {
   {0, 0, 2, 2, 5, 5, 7, 7}, // Drum-like clustered layout
   {0, 2, 4, 5, 7, 9, 10, 12}, // Mixolydian
 };
+// Melodics-compatible GM drum map:
+// KICK(36), SNARE(38), CHH(42), OHH(46), LOW TOM(41), MID TOM(45), CRASH(49), RIDE(51)
+const byte DRUM_NOTES_MELODICS[MAX_NOTES] = {36, 38, 42, 46, 41, 45, 49, 51};
 const byte CHORDS[NB_CHORDS][MAX_NOTES] = {
   {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
   {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
@@ -1069,6 +1073,13 @@ void syncHeldPadsAfterNoteLayoutChange() {
 
 bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
   currentVelocity = pushVelocity[pin];
+
+  if (selectedScale == SCALE_INDEX_DRUM) {
+    currentVelocity = pushSettingsLocked[pin] ? pushVelocity[pin] : globalVelocity;
+    currentNote = DRUM_NOTES_MELODICS[pin];
+    return true;
+  }
+
   int noteValue = pushNote[pin];
   if (!pushSettingsLocked[pin]) {
     currentVelocity = globalVelocity;
