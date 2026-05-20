@@ -1,194 +1,192 @@
-# MIDI P0Ah PLAy (proto-serial)
-
-DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial** and can also **follow incoming MIDI clock** to sync a pad note-repeat engine.
-
-Everything is in [`powaplay.ino`](./powaplay.ino).
-
-## What You Get
-
-**Inputs**
-
-- 8 pads (momentary buttons) through a CD74HC4067 multiplexer
-- 2 rotary encoders (+ 2 encoder push switches, also read on the mux)
-- 2 faders
-- 4 mode switches (mux channels `0`, `1`, `10`, `11`)
-- Optional ultrasonic sensor (HC-SR04)
-
-**Outputs**
-
-- MIDI out (Serial bridge):
-  - Note On/Off (with optional chords and scale remap)
-  - Control Change (CC)
-- Tempo LEDs (4 outputs) driven from incoming MIDI clock
-- Built-in LED + `MAGNET` output while a note is on
-- TM1637 4-digit display for feedback (velocity, octave, CC, repeat speed, etc.)
-
-## Quick Start
-
-1. Open [`powaplay.ino`](./powaplay.ino) in the Arduino IDE.
-2. Install dependencies (Arduino Library Manager, or your preferred method):
-   - `MIDI` (FortySevenEffects)
-   - `Encoder` (Paul Stoffregen)
-   - A TM1637 7-segment library that provides `SevenSegmentTM1637.h` / `SevenSegmentFun.h`
-   - `light_CD74HC4067` (CD74HC4067 multiplexer)
-   - `HCSR04`
-3. Select your board and port, then upload.
-4. On the computer, bridge the serial port to MIDI:
-   - Hairless MIDI <-> Serial Bridge is the intended workflow (custom MIDI settings in the sketch).
-5. In your DAW:
-   - Select the created MIDI input as the controller input.
-   - If you want tempo-synced repeats, send MIDI clock/start/stop to the controller (through the same bridge).
-
-## MIDI I/O
-
-**Serial MIDI**
-
-- Baud rate: `38400` (`BAUD_RATE`)
-- MIDI channel: `midiChannel` (default `2`)
-
-**MIDI output**
-
-- Notes: `sendNote()` sends NoteOn/NoteOff (and expands to a chord if enabled).
-- CC: `MIDI.sendControlChange(...)` from CC mode and from the ultrasonic sensor.
-
-**MIDI input (from Serial)**
-
-The sketch listens for:
-
-- `MIDI_START` / `MIDI_STOP` / `MIDI_CONTINUE`
-- `MIDI_CLOCK` (used to compute BPM and drive the tempo LEDs)
-- `MIDI_SONG_POSITION_POINTER` (display only; TODO)
-
-## Controls (Practical)
-
-### Pads
-
-- Pressing a pad triggers `playPush(pad, on/off)`.
-- Default pad base notes are initialized from `globalStartNote` (default `48`) in `setup()` as `pushNote[pad] = globalStartNote + pad`.
-- Depending on the selected scale, some pads can be disabled (`UNASSIGNED`) and will produce no note.
-
-Tip: a lot of “edit” actions apply to the *selected pad* (`selectedPushPin`). Press a pad first before trying to edit per-pad settings.
-
-### Performance Mode (normal play)
-
-When `CC` mode is OFF:
-
-- Fader 1 (`F1`) edits velocity (global or per-pad if the pad is locked).
-- Fader 2 (`F2`) edits octave (`-4` to `+6`) and sets `globalNoteOffset = octave * 12`.
-- Turning an encoder (when its push switch is not held) fine-adjusts velocity or octave.
-
-**Chords and scales**
-
-- Hold the encoder push switch that triggers *scale selection* and turn the corresponding encoder to cycle scales:
-  - `SEMI` (no remap)
-  - `MAJ`, `MIN_`, `BLUE`, `BLU_`
-- Hold the encoder push switch that triggers *chord selection* and turn the corresponding encoder to cycle chords:
-  - `NOTE` (no chord)
-  - `MAJ`, `MIN`, `AUG`
-
-### CC Mode
-
-Enable CC mode via the mux switch `SW_CC` (mux channel `0`).
-
-- Fader 1 and fader 2 send CC values for two CC lanes (`midiCC[0]` and `midiCC[1]`).
-- Turning an encoder adjusts the CC value (unless you are holding the corresponding encoder push switch).
-- Holding an encoder push switch switches that lane into “CC select”:
-  - Turn the encoder to change the CC number (`midiCC[x]`).
-  - Hold one or more pads to pick a CC preset from `midiCCPresets[]` (pads map to presets).
-
-### Note Repeat Mode
-
-Enable repeat mode via the mux switch `SW_REPEAT` (mux channel `1`).
-
-- Pads you hold will repeat in sync with the internal tempo (which follows incoming MIDI clock when present).
-- Hold the repeat-speed modifier and turn the encoder to change repeat speed divisor (`1..64`). The display shows `1N` with the colon lit.
-
-**Repeat lock**
-
-- While in repeat mode, you can lock repeating on the currently held pads:
-  - Hold the lock modifier: locks the held pads (`repeatIsLocked[p] = true`)
-  - Hold the unlock modifier: unlocks the held pads (`repeatIsLocked[p] = false`)
-
-### Ultrasonic Mode (HC-SR04)
-
-Enable ultrasonic mode via the mux switch `SW_ULTRASONIC` (mux channel `10`).
-
-- The sensor distance is mapped to a CC value and sent continuously.
-- Holding the appropriate encoder push switch lets you edit:
-  - `ultrasonicCC` (CC number)
-  - `maxUltrasonicDistanceCm` (range)
-
-### Init / Reset Mode
-
-Enable init mode via the mux switch `SW_PLAY` (mux channel `11`, used as `INIT_MASK` in this branch).
-
-- In init mode, encoders adjust:
-  - MIDI channel
-  - base note offset (global/per-pad depending on pad selection/lock)
-- There is also a “reinit” gesture: when leaving init mode, holding the left encoder push switch triggers `reinit()` (display shows `init`).
-
-## Hardware / Wiring
-
-Multiplexer:
-
-- CD74HC4067 signal -> `A0` (`MUXSIG`) with `INPUT_PULLUP`
-- Address pins -> `A1, A2, A3, A4`
-- Inputs are treated as active-low for pads (`PUSHED == LOW`).
-- Mode switches are read as `true` when the mux input reads HIGH in `readSwitches()`.
-
-Encoders:
-
-- Encoder A/B pins:
-  - P1: `P1CLK=2`, `P1DT=4`
-  - P2: `P2CLK=3`, `P2DT=5`
-- Encoder push switches are read through the mux:
-  - `P1SW` is mux channel `15`
-  - `P2SW` is mux channel `14`
-
-Faders:
-
-- `F1 = A6`, `F2 = A7`
-
-Display (TM1637-style):
-
-- `LCD_CLK = 12`, `LCD_DIO = 11`
-
-LED outputs:
-
-- `L1 = 10`, `L2 = 9`, `L3 = 8`, `L4 = 7`
-
-Ultrasonic:
-
-- `triggerPin = 13`, `echoPin = 6`
-
-Magnet output:
-
-- `MAGNET = A5` (set HIGH while notes are on)
-
-Board notes:
-
-- `A6/A7` are not present on some boards (for example Uno). Use a board that has them (Nano/Pro Mini) or change `F1/F2`.
-- MIDI is on `Serial` (hardware UART). On native-USB boards you may need a different serial interface and to adjust `MIDI_CREATE_CUSTOM_INSTANCE(...)`.
-
-## Common Tweaks
-
-In [`powaplay.ino`](./powaplay.ino):
-
-- `midiChannel` (default `2`)
-- `globalStartNote` (default `48`)
-- `midiCCPresets[]` (which CC numbers the pads select in CC mode)
-- Fader threshold/feel: `MAX_FADER_VALUE`, `MIN_FADER_VALUE`, `FADER_THRESHOLD`
-
-## Troubleshooting
-
-- No MIDI:
-  - Confirm your bridge baud rate is **38400**.
-  - Confirm the DAW is using the correct virtual MIDI port.
-- Repeats not synced:
-  - This sketch expects incoming MIDI clock on the serial MIDI input path. Make sure your bridge routes clock from the DAW to the Arduino.
-- Some pads produce no sound:
-  - In some scales, pads can be `UNASSIGNED` and are intentionally muted.
-
-## License
-
-No `LICENSE` file is currently present in the repository.
+# MIDI P0AH PLAY (proto-serial)
+
+DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Serial**. It features a scale/chord engine, arp performance controls, CC control lanes, ultrasonic "D-Beam," pad lock/latch workflows, and MIDI clock sync.
+
+### MIDI Signals Summary
+* **Note On/Off:** Pads send note events (single notes or chord voicings depending on mode/scale settings).
+* **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
+* **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced arp behavior.
+
+![MIDI P0AH PLAY](images/1776264780911.jpg)
+
+## ✅ Current Firmware Feature Set
+
+### Musical Engine
+* 8 pads (`P1..P8`) mapped to semitone positions with optional scale remap.
+* Global velocity + per-pad velocity lock.
+* Global base note / transpose editing in Init workflow.
+* Global octave control (fader + encoder), with note-layout updates applied live.
+* Chord engine with **14 chord types**:
+  * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`, `d7`, `5th`, `Ad9`, `m7b6`
+* Scale engine with **10 scale layouts**:
+  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `
+* Chord, scale, and arp selectors wrap around instead of stopping at the ends.
+
+### Arp / Gate
+* `SW_REPEAT` is now an **arp mode** rather than a simple note-repeat mode.
+* Arp playback uses the current 8-pad scale layout as its note pool and chord-voices each step through the selected chord.
+* Tempo/gate behavior is per pad, with scheduled NoteOff handling to avoid stuck or overly long repeated notes.
+* Pad latch/lock is available inside arp mode, so a pad can continue running after release.
+* Current arp types:
+
+| Label | Meaning |
+| :--- | :--- |
+| `NOtE` | Retrigger the current pad root/chord only |
+| `UP` | Walk upward through the valid pad-layout slots |
+| `dn` | Walk downward through the valid pad-layout slots |
+| `dU` | Bounce downward first, without repeating endpoints |
+| `Ud` | Bounce upward first, without repeating endpoints |
+| `rAnd` | Uniform random slot selection, repeats allowed |
+| `rnNo` | Random slot selection without immediate repeats |
+| `SHFL` | Shuffle valid slots, play the cycle, then reshuffle |
+| `CNVr` | Converge from the outside toward the center |
+| `Ordr` | Use pad press order, anchored by the first active pressed/latched pad |
+| `ASGN` | Stable as-played pad order |
+
+* Ordered arp modes (`Ordr`, `ASGN`) treat the **first active pressed/latched pad** as the anchor lane. Later pads extend the note pool instead of starting overlapping arp sequences.
+
+### CC Engine
+* 2 editable CC lanes (`midiCC[0]`, `midiCC[1]`) with values from encoders/faders.
+* Pad CC presets (in CC mode):
+  * `P1→CC91`, `P2→CC92`, `P3→CC93`, `P4→CC94`,
+  * `P5→CC95`, `P6→CC98`, `P7→CC99`, `P8→CC100`
+* CC preset display format on 4-digit screen:
+  * `C091 ... C100`
+
+### Sync / Transport / Safety
+* MIDI realtime handling: `CLOCK`, `START`, `STOP`, `CONTINUE`, `SPP`.
+* Incoming MIDI clock drives arp timing when transport sync is active.
+* During synced arp playback, note-layout changes (for example octave, chord, scale, or lock-related changes) take effect on the next scheduled step instead of forcing an immediate base-note restart.
+* Tick-based tempo LED display (one LED at a time).
+* Panic on Init-switch edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
+
+### LED Behavior
+* 4 LEDs reflect pad columns when playing pads:
+  * LED1 = pads 1+5
+  * LED2 = pads 2+6
+  * LED3 = pads 3+7
+  * LED4 = pads 4+8
+* During MIDI sync and no held pads: LEDs show beat phase (single LED chase).
+
+## 🛠 Required Hardware
+
+This project is designed for a specific hardware footprint. Because it uses **8 pads, 4 mode switches, and 2 encoder buttons**, a multiplexer is mandatory.
+
+### 1. Microcontroller
+*   **Recommended:** **Arduino Nano** or **Pro Mini** (ATmega328P).
+*   **Note:** This sketch uses pins **A6 and A7** for the faders. These pins are physically present on the Nano and Pro Mini but **do not exist on the Arduino Uno**. If using an Uno, you must rewire faders to A4/A5 and move the Multiplexer pins.
+
+### 2. Multiplexer
+*   **Model:** **CD74HC4067** (16-Channel Analog/Digital Multiplexer).
+*   This is the "brain" of the inputs, handling all 8 pads, the 4 mode switches, and the 2 encoder push-buttons via a single analog pin (`A0`).
+
+### 3. Other Components
+*   **Rotary Encoders:** 2x Standard KY-040 (or similar).
+*   **Display:** 4-digit TM1637 7-segment display.
+*   **Sensor:** HC-SR04 Ultrasonic Sensor.
+*   **Physical Feedback:** 4x LEDs (Tempo) and 1x Solenoid/Magnet (Triggered via Pin A5).
+
+## 🎹 Pin & Multiplexer Mapping
+
+| Component | Pin / Mux Channel |
+| :--- | :--- |
+| **Mux SIG** | **A0** (The entry point for 14 inputs) |
+| **Mux Address** | **A1, A2, A3, A4** (S0-S3) |
+| **Fader 1 & 2** | **A6, A7** (Dedicated Analog) |
+| **Encoders** | D2/D4 (Enc 1) and D3/D5 (Enc 2) |
+| **Display** | D12 (CLK), D11 (DIO) |
+| **Ultrasonic** | D13 (Trig), D6 (Echo) |
+| **Magnet Out** | **A5** (Active on Note On) |
+
+### Multiplexer (CD74HC4067) Channel Map:
+| Channel | Function |
+| :--- | :--- |
+| **0** | `SW_CC` (Mode Switch) |
+| **1** | `SW_REPEAT` (Mode Switch) |
+| **2 – 9** | **Pads 1 – 8** (Performance Buttons) |
+| **10** | `SW_ULTRASONIC` (Mode Switch) |
+| **11** | `SW_PLAY` (Init/Reset Mode Switch) |
+| **14** | `P2SW` (Right Encoder Push) |
+| **15** | `P1SW` (Left Encoder Push) |
+
+---
+
+## 🕹 Operating Modes
+
+Toggle the physical Mode Switches to change functionality:
+
+* **Standard Mode:**
+  * Fader 1 = Velocity, Fader 2 = Octave.
+  * Encoder 1 = Velocity, Encoder 2 = Octave.
+  * Right encoder push: scale select.
+  * Left encoder push: chord select.
+  * Chord and scale selectors wrap around.
+  * Pad lock/unlock available via encoder-push + pad workflows.
+
+* **CC Mode (`SW_CC`)**
+  * Faders edit CC values for lanes 1 and 2.
+  * With **no encoder push held**, encoder 1 and encoder 2 edit the CC values for lanes 1 and 2.
+  * Hold **Left encoder push** (`P1SW`) to edit/select **CC lane 2 number** with encoder 2 and select pad-based CC presets for lane 1.
+  * Hold **Right encoder push** (`P2SW`) to edit/select **CC lane 1 number** with encoder 1 and select pad-based CC presets for lane 2.
+  * Preset CC labels are displayed as `C091..C100`.
+
+* **Arp Mode (`SW_REPEAT`)**
+  * Left encoder push: arp rate / divisor edit.
+  * Right encoder push: arp type select.
+  * Arp selector wraps around.
+  * Pad arp lock/unlock workflows are available in arp context.
+
+* **Ultrasonic Mode (`SW_ULTRASONIC`)**
+  * Hold **Right encoder push** to set ultrasonic target CC number.
+  * Left encoder push + turn encoder 1: set max ultrasonic distance range.
+  * Sensor sends continuous CC based on measured distance.
+
+* **Init / Setup Mode (`SW_PLAY` logic)**
+  * Encoder 1: MIDI channel (`CHx`).
+  * Encoder 2: base note / transpose reference (note name shown).
+  * Left encoder push on init entry can trigger `reinit()` (factory-style reset of runtime settings).
+
+
+---
+
+## 💻 Software Setup & MIDI Routing
+
+Since this device communicates over a standard Serial port (not Native USB MIDI), you must bridge the signal on your computer.
+
+### The Windows Workflow (loopMIDI + Hairless)
+On Windows, MIDI software cannot "see" Serial data directly. You need two tools:
+1.  **[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html):** Create a virtual MIDI port (e.g., call it "P0Ah Port").
+2.  **[Hairless MIDI <-> Serial Bridge](https://projectgus.github.io/hairless-midiserial/):**
+    *   Set **Serial Port** to your Arduino's COM port.
+    *   Set **MIDI Out** to your loopMIDI virtual port.
+    *   Set **MIDI In** to your loopMIDI virtual port (for clock sync).
+    *   Go to `Preferences` and set the **Baud Rate to 38400**.
+3.  **In your DAW:** Select the virtual (LoopMidi) Port as your MIDI Input and Output (to send clock).
+
+### Alternative bridge solution
+For modern WSL compatible serial MIDI bridge, use: **[SerialMidi-WMS](https://github.com/B2F/SerialMidi-WMS)**
+
+### Firmware Flashing (PlatformIO)
+Use PlatformIO CLI from the repository root:
+
+1. Install PlatformIO Core (if needed):
+   * `python -m pip install -U platformio`
+2. Build firmware:
+   * `python -m platformio run -e nanoatmega328`
+3. Upload firmware:
+   * `python -m platformio run -e nanoatmega328 -t upload --upload-port <PORT>`
+4. Open serial monitor (firmware baud rate):
+   * `python -m platformio device monitor -p <PORT> -b 38400`
+
+Notes:
+* `-t upload` compiles automatically before uploading.
+* Replace `<PORT>` with your serial port (for example `COM3` on Windows or `/dev/ttyUSB0` on Linux).
+* If needed, list available ports with `python -m platformio device list`.
+* If upload fails because the port is busy, close serial monitor/bridge apps and retry.
+
+---
+
+## ⚠️ Troubleshooting
+*   **Baud Rate:** If you see "Garbage" in Hairless MIDI, ensure the baud rate is exactly **38400**.
+*   **Ghost Triggers:** Ensure the CD74HC4067 `EN` (Enable) pin is connected to **Ground**.
+*   **Uno Users:** If you are forced to use an Uno, change `F1` and `F2` in the code to `A2` and `A3`, and move your Multiplexer Address pins to the Digital rail.
