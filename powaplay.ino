@@ -173,6 +173,19 @@ struct InputState {
   bool rightPush;
 };
 
+struct ModeContext {
+  ActiveMode displayMode;
+  bool setupHeld;
+  bool setupOnlyHeld;
+  bool anyEncoderPush;
+  bool ccSelected;
+  bool repeatSelected;
+  bool ultrasonicSelected;
+  bool allowFreeEncoder;
+  bool allowEncoderPushActions;
+  bool allowSetupEdit;
+};
+
 InputState currentInputState = {false, false, false, false, false, false};
 ActiveMode currentActiveMode = ActiveMode::Standard;
 
@@ -226,6 +239,26 @@ bool isModeEnabled(ActiveMode mode) {
   return false;
 }
 
+ModeContext deriveModeContext(const InputState& input) {
+  ActiveMode displayMode = resolveActiveMode(input);
+  ModeContext context = {
+    displayMode,
+    input.init,
+    input.init && !input.cc && !input.repeat && !input.ultrasonic,
+    input.leftPush == PUSHED || input.rightPush == PUSHED,
+    displayMode == ActiveMode::Cc,
+    displayMode == ActiveMode::Repeat,
+    displayMode == ActiveMode::Ultrasonic,
+    false,
+    false,
+    false,
+  };
+  context.allowSetupEdit = context.setupOnlyHeld;
+  context.allowFreeEncoder = !context.anyEncoderPush && !context.setupOnlyHeld;
+  context.allowEncoderPushActions = !context.setupOnlyHeld;
+  return context;
+}
+
 // MIDI
 
 #define MIDI_CLOCK 0xF8
@@ -259,18 +292,29 @@ const byte ARP_TYPE_ORDER PROGMEM = 9;
 const byte ARP_TYPE_ASSIGN PROGMEM = 10;
 const byte MAX_NOTES PROGMEM = 8;
 byte selectedArpType = ARP_TYPE_SINGLE_NOTE;
-const char* ARP_NAMES[NB_ARP_TYPES] = {
-  "NOtE",
-  " UP ",
-  " dn ",
-  " dU ",
-  " Ud ",
-  "rAnd",
-  "rnNo",
-  "SHFL",
-  "CNVr",
-  "Ordr",
-  "ASGN"
+const char kArpName0[] PROGMEM = "NOtE";
+const char kArpName1[] PROGMEM = " UP ";
+const char kArpName2[] PROGMEM = " dn ";
+const char kArpName3[] PROGMEM = " dU ";
+const char kArpName4[] PROGMEM = " Ud ";
+const char kArpName5[] PROGMEM = "rAnd";
+const char kArpName6[] PROGMEM = "rnNo";
+const char kArpName7[] PROGMEM = "SHFL";
+const char kArpName8[] PROGMEM = "CNVr";
+const char kArpName9[] PROGMEM = "Ordr";
+const char kArpName10[] PROGMEM = "ASGN";
+const char* const ARP_NAMES[NB_ARP_TYPES] PROGMEM = {
+  kArpName0,
+  kArpName1,
+  kArpName2,
+  kArpName3,
+  kArpName4,
+  kArpName5,
+  kArpName6,
+  kArpName7,
+  kArpName8,
+  kArpName9,
+  kArpName10
 };
 
 const byte pushPin[NB_PUSH] = {
@@ -331,40 +375,64 @@ bool prevInitMode = false;
 // Including NOTE (no chord).
 const byte NB_CHORDS PROGMEM = 14;
 byte selectedChord = 0;
-const char* CHORD_NAMES[NB_CHORDS] = {
-  "NOTE", // Single Note
-  "MAJ ", // Major
-  "MIN ", // Minor
-  "AUG ", // Augmented
-  "dIM ", // Diminished
-  "SUS2", // Suspended 2
-  "SUS4", // Suspended 4
-  " 7th", // Dominant 7th
-  "MAJ7", // Major 7th
-  "MIN7", // Minor 7th
-  "d7  ", // Diminished 7th
-  "5th ", // Power chord
-  "Ad9 ", // Add 9
-  "m7b6"  // Minor 7 flat 6
+const char kChordName0[] PROGMEM = "NOTE";
+const char kChordName1[] PROGMEM = "MAJ ";
+const char kChordName2[] PROGMEM = "MIN ";
+const char kChordName3[] PROGMEM = "AUG ";
+const char kChordName4[] PROGMEM = "dIM ";
+const char kChordName5[] PROGMEM = "SUS2";
+const char kChordName6[] PROGMEM = "SUS4";
+const char kChordName7[] PROGMEM = " 7th";
+const char kChordName8[] PROGMEM = "MAJ7";
+const char kChordName9[] PROGMEM = "MIN7";
+const char kChordName10[] PROGMEM = "d7  ";
+const char kChordName11[] PROGMEM = "5th ";
+const char kChordName12[] PROGMEM = "Ad9 ";
+const char kChordName13[] PROGMEM = "m7b6";
+const char* const CHORD_NAMES[NB_CHORDS] PROGMEM = {
+  kChordName0,
+  kChordName1,
+  kChordName2,
+  kChordName3,
+  kChordName4,
+  kChordName5,
+  kChordName6,
+  kChordName7,
+  kChordName8,
+  kChordName9,
+  kChordName10,
+  kChordName11,
+  kChordName12,
+  kChordName13
 };
 
 // Scales
 const byte NB_SCALES PROGMEM = 10;
 const byte SCALE_INDEX_DRUM PROGMEM = 8;
 byte selectedScale = 0;
-const char* SCALE_NAMES[NB_SCALES] = {
-  "SEMI",
-  "MAJ",
-  "MIN_",
-  "BLUE",
-  "BLU_",
-  "PENT",
-  "DOR ",
-  "JAPN",
-  "DRUM",
-  "MIX "
+const char kScaleName0[] PROGMEM = "SEMI";
+const char kScaleName1[] PROGMEM = "MAJ";
+const char kScaleName2[] PROGMEM = "MIN_";
+const char kScaleName3[] PROGMEM = "BLUE";
+const char kScaleName4[] PROGMEM = "BLU_";
+const char kScaleName5[] PROGMEM = "PENT";
+const char kScaleName6[] PROGMEM = "DOR ";
+const char kScaleName7[] PROGMEM = "JAPN";
+const char kScaleName8[] PROGMEM = "DRUM";
+const char kScaleName9[] PROGMEM = "MIX ";
+const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
+  kScaleName0,
+  kScaleName1,
+  kScaleName2,
+  kScaleName3,
+  kScaleName4,
+  kScaleName5,
+  kScaleName6,
+  kScaleName7,
+  kScaleName8,
+  kScaleName9
 };
-const byte SCALES[NB_SCALES][MAX_NOTES] = {
+const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 1, 2, 2, 3, 4, 5, 5}, // Major
   {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
@@ -378,7 +446,7 @@ const byte SCALES[NB_SCALES][MAX_NOTES] = {
 };
 // Melodics-compatible GM drum map:
 // KICK(36), SNARE(38), CHH(42), OHH(46), LOW TOM(41), MID TOM(45), CRASH(49), RIDE(51)
-const byte DRUM_NOTES_MELODICS[MAX_NOTES] = {
+const byte DRUM_NOTES_MELODICS[MAX_NOTES] PROGMEM = {
   36,  // Pad 1 drum note: Kick
   38,  // Pad 2 drum note: Snare
   42,  // Pad 3 drum note: Closed Hi-Hat
@@ -388,7 +456,7 @@ const byte DRUM_NOTES_MELODICS[MAX_NOTES] = {
   49,  // Pad 7 drum note: Crash
   51,  // Pad 8 drum note: Ride
 };
-const byte CHORDS[NB_CHORDS][MAX_NOTES] = {
+const byte CHORDS[NB_CHORDS][MAX_NOTES] PROGMEM = {
   {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
   {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
   {0, 3, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MIN
@@ -415,6 +483,26 @@ byte getArpSourcePad(byte sourcePad);
 byte getOrderedArpAnchorPad();
 void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos);
 void buildOrderedActivePads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos, bool pinStart);
+
+byte readScaleStep(byte scaleIndex, byte padIndex) {
+  return pgm_read_byte(&SCALES[scaleIndex][padIndex]);
+}
+
+byte readDrumNote(byte padIndex) {
+  return pgm_read_byte(&DRUM_NOTES_MELODICS[padIndex]);
+}
+
+byte readChordInterval(byte chordIndex, byte intervalIndex) {
+  return pgm_read_byte(&CHORDS[chordIndex][intervalIndex]);
+}
+
+void printProgmemLabel(const char* const* labels, byte index) {
+  char label[6];
+  const char* labelPtr = (const char*) pgm_read_word(&labels[index]);
+  strncpy_P(label, labelPtr, sizeof(label) - 1);
+  label[sizeof(label) - 1] = '\0';
+  display_iface::print(label);
+}
 
 void reinit() {
   midiCC[0] = kSelectedMappingProfile.defaultCcLane1;
@@ -549,7 +637,7 @@ void appSetupImpl() {
   display_iface::init(display);
   display_iface::begin();
   display_iface::print("P0AH");
-  delay(1000);
+  delay(500);
   if (isModeEnabled(ActiveMode::Init)) {
     readSwitches();
     if (isModeEnabled(ActiveMode::Init)) {
@@ -559,7 +647,7 @@ void appSetupImpl() {
         display_iface::print("P0AH PLAY");
         readSwitches();
         if (isModeEnabled(ActiveMode::Init)) {
-          display_iface::snake(2, 70);
+          display_iface::snake(2, 35);
         }
       }
     }
@@ -607,12 +695,8 @@ void appLoopImpl() {
     encoderVal[pos] = readEncoder(pos); 
   }
 
-  bool setupHeld = isModeEnabled(ActiveMode::Init);
-  bool setupOnlyHeld = setupHeld &&
-                       !isModeEnabled(ActiveMode::Cc) &&
-                       !isModeEnabled(ActiveMode::Repeat) &&
-                       !isModeEnabled(ActiveMode::Ultrasonic);
-  if (setupOnlyHeld && leftPush == PUSHED) {
+  ModeContext modeContext = deriveModeContext(currentInputState);
+  if (modeContext.setupOnlyHeld && leftPush == PUSHED) {
     if (initResetHoldStartMs == 0) {
       initResetHoldStartMs = millis();
     }
@@ -627,22 +711,19 @@ void appLoopImpl() {
     initResetLatched = false;
   }
 
-  if (setupOnlyHeld) {
+  if (modeContext.allowSetupEdit) {
     updateChannelFromEncoder(0);
     updateBaseNoteFromEncoder(1);
   }
 
-  // @todo: show active paired setting on encoder push.
-  bool anyEncoderPushActive = (leftPush == PUSHED || rightPush == PUSHED);
-
   // Encoders et faders (sans encoder push)
-  if (isModeEnabled(ActiveMode::Cc)) {
+  if (modeContext.ccSelected) {
     updateCCValueFromFader(0);
     updateCCValueFromFader(1);
 
     // In CC mode, a push on either encoder reserves interaction context,
     // so both free-encoder CC-value updates are paused.
-    if (!anyEncoderPushActive && !setupOnlyHeld) {
+    if (modeContext.allowFreeEncoder) {
       updateMidiCCValueFromEncoder(0);
       updateMidiCCValueFromEncoder(1);
     }
@@ -653,17 +734,17 @@ void appLoopImpl() {
 
     // Same reservation rule in non-CC mode: any encoder push pauses both
     // free-encoder updates so pressed context keeps display/control priority.
-    if (!anyEncoderPushActive && !setupOnlyHeld) {
+    if (modeContext.allowFreeEncoder) {
       updateVelocityFromEncoder(0);
       updateOctaveFromEncoder(1);
     }
   }
 
   // Encoder push
-  if (setupOnlyHeld) {
+  if (!modeContext.allowEncoderPushActions) {
     // Setup context reserves encoder-push actions for channel/base-note editing.
   }
-  else if (isModeEnabled(ActiveMode::Ultrasonic)) {
+  else if (modeContext.ultrasonicSelected) {
     if (rightPush == PUSHED) {
       updateUltrasonicCC(0);
     }
@@ -671,7 +752,7 @@ void appLoopImpl() {
       updateUltrasonicDistance(1);
     }
   }
-  else if (isModeEnabled(ActiveMode::Repeat)) {
+  else if (modeContext.repeatSelected) {
     if (leftPush == PUSHED) {
       updateArpRateFromEncoder(1);
       updatePadsRepeatLockUnlock(true);
@@ -681,7 +762,7 @@ void appLoopImpl() {
       updatePadsRepeatLockUnlock(false);
     }
   }
-  else if (isModeEnabled(ActiveMode::Cc)) {
+  else if (modeContext.ccSelected) {
     if (leftPush == PUSHED) {
       updateMidiControlFromEncoder(1);
       selectCCPreset(0);
@@ -703,7 +784,7 @@ void appLoopImpl() {
     }
   }
 
-  if (isModeEnabled(ActiveMode::Ultrasonic)) {
+  if (modeContext.ultrasonicSelected) {
     trackUltrasonicChanges();
   }
 }
@@ -733,7 +814,9 @@ void updateChannelFromEncoder(byte selected) {
     midiChannel = wrappedChannel + 1;
     display_iface::clear();
     display_iface::setColonOn(false);
-    display_iface::print("CH" + String(midiChannel));
+    char label[6];
+    snprintf(label, sizeof(label), "CH%u", midiChannel);
+    display_iface::print(label);
     encoderPos[selected] = encoderVal[selected];
   }
 }
@@ -763,7 +846,7 @@ void chordSelect(byte selected) {
   }
   selectedChord = wrappedChord;
   display_iface::clear();
-  display_iface::print(CHORD_NAMES[selectedChord]);
+  printProgmemLabel(CHORD_NAMES, selectedChord);
   display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   syncHeldPadsAfterNoteLayoutChange();
@@ -784,7 +867,7 @@ void arpSelect(byte selected) {
   selectedArpType = wrappedArpType;
 
   display_iface::clear();
-  display_iface::print(ARP_NAMES[selectedArpType]);
+  printProgmemLabel(ARP_NAMES, selectedArpType);
   display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   resetAllArpStates();
@@ -918,7 +1001,7 @@ void scaleSelect(byte selected) {
   }
   selectedScale = wrappedScale;
   display_iface::clear();
-  display_iface::print(SCALE_NAMES[selectedScale]);
+  printProgmemLabel(SCALE_NAMES, selectedScale);
   display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   syncHeldPadsAfterNoteLayoutChange();
@@ -1151,7 +1234,7 @@ void resetAllArpStates(unsigned long referenceTime) {
 }
 
 bool isPadArpActive(byte pin) {
-  return repeatIsLocked[pin] == true || (checkMode(REPEAT_MASK) && isPushed[pin] == PUSHED);
+  return repeatIsLocked[pin] == true || (isModeEnabled(ActiveMode::Repeat) && isPushed[pin] == PUSHED);
 }
 
 void syncHeldPadsAfterNoteLayoutChange() {
@@ -1182,7 +1265,7 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
     // DRUM scale is intentionally a direct GM drum note map for Melodics/E-Drums compatibility.
     // We bypass scale step offsets here so each pad always sends the expected drum voice.
     currentVelocity = pushSettingsLocked[pin] ? pushVelocity[pin] : globalVelocity;
-    currentNote = DRUM_NOTES_MELODICS[pin];
+    currentNote = readDrumNote(pin);
     return true;
   }
 
@@ -1192,11 +1275,12 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
     noteValue += globalNoteOffset;
   }
 
-  if (SCALES[selectedScale][pin] == UNASSIGNED) {
+  byte scaleStep = readScaleStep(selectedScale, pin);
+  if (scaleStep == UNASSIGNED) {
     return false;
   }
 
-  noteValue += SCALES[selectedScale][pin];
+  noteValue += scaleStep;
   if (noteValue < 0) {
     noteValue = 0;
   }
@@ -1492,10 +1576,10 @@ void updatePads() {
       padPressOrder[p] = nextPadPressOrder++;
       resetArpState(p);
 
-      if (!checkMode(CC_MASK) || (rightPush == RELEASED && leftPush == RELEASED)) {
+      if (!isModeEnabled(ActiveMode::Cc) || (rightPush == RELEASED && leftPush == RELEASED)) {
         pushedTime[p] = micros();
         bool shouldPreviewPad =
-          !(checkMode(REPEAT_MASK)
+          !(isModeEnabled(ActiveMode::Repeat)
           && (selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN)
           && orderedAnchorBeforePress != UNASSIGNED);
         if (shouldPreviewPad) {
@@ -1538,16 +1622,16 @@ void playPadsArp() {
       }
       continue;
     }
-    if (
-      (isPushed[pin] == RELEASED && repeatIsLocked[pin] == false) ||
-      (!checkMode(REPEAT_MASK) && repeatIsLocked[pin] == false)
-    ) {
-      resetArpState(pin, getNextRepeatMicros(pin));
-    }
+      if (
+        (isPushed[pin] == RELEASED && repeatIsLocked[pin] == false) ||
+        (!isModeEnabled(ActiveMode::Repeat) && repeatIsLocked[pin] == false)
+      ) {
+        resetArpState(pin, getNextRepeatMicros(pin));
+      }
     unsigned long nextCap = getNextRepeatMicros(pin);
     if (nextCap != 0 && micros() > nextCap) {
       if (
-        (checkMode(REPEAT_MASK) && isPushed[pin] == PUSHED) ||
+        (isModeEnabled(ActiveMode::Repeat) && isPushed[pin] == PUSHED) ||
         repeatIsLocked[pin] == true
       ) {
         pushElapsedRepeats[pin]++;
@@ -1997,13 +2081,9 @@ void displayPrint(const char string[], bool semicolon, bool clear) {
 
 void displayPrint(int string, bool semicolon, bool clear) {
   prepareDisplay(semicolon, clear);
-  display_iface::print(String(string));
-}
-
-void displayPrintString(String s) {
-  display_iface::setColonOn(false);
-  display_iface::clear();
-  display_iface::print(s);
+  char label[12];
+  snprintf(label, sizeof(label), "%d", string);
+  display_iface::print(label);
 }
 
 void displayPrintString(const char s[]) {
@@ -2019,17 +2099,13 @@ void prepareDisplay(bool semicolon, bool clear) {
   }
 }
 
-bool checkMode(byte mask) {
-  return ((currentPlayMode & mask) == mask);
-}
-
 void sendNote(byte note, byte velocity, bool on) {
   for (
     byte offset = 0;
     offset < MAX_NOTES;
     offset++
   ) {
-    byte interval = CHORDS[selectedChord][offset];
+    byte interval = readChordInterval(selectedChord, offset);
     if (interval == UNASSIGNED) {
       // End of chord definition; do not leave function so magnet state can be updated.
       break;
