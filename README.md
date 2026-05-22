@@ -9,7 +9,19 @@ DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Se
 
 ![MIDI P0AH PLAY](images/1776264780911.jpg)
 
+*This prototype build uses 4 Sanwa arcade push buttons.*
+
 ## 🕹 Operating Modes
+
+Quick controls overview:
+
+| Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `PLAY` (SW_PLAY) | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
+| `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
+| `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
+| `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
+| `RESET` (all four switches) | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
 
 Mode selection behavior:
 
@@ -22,17 +34,7 @@ Mode selection behavior:
 * After RESET trigger, mode stays in `RESET` until a new mode-select ON edge occurs (`SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, or `SW_PLAY`).
 * For non-RESET mode selection, latest ON edge wins.
 
-Right after activation, display shows one of: `PLAY`, `CC`, `REP`, `ULT`, `RES`.
-
-Quick controls overview:
-
-| Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `PLAY` | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
-| `CC` | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
-| `REPEAT` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
-| `ULTRASONIC` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
-| `RESET` | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+Right after activation, display shows one of:  `PLAY`, `CC`, `REPEAT`, `ULTRASONIC`, `RESET`.
 
 Per-mode behavior:
 
@@ -44,14 +46,14 @@ Per-mode behavior:
   * Chord and scale selectors wrap around.
   * Pad settings lock/unlock available via encoder-push + pad workflows (`pushSettingsLocked`).
 
-* **CC Mode (`SW_CC`)**
+* **CC Mode (`SW_CC` switch)**
   * Faders edit CC values for lanes 1 and 2.
   * With **no encoder push held**, encoder 1 and encoder 2 edit the CC values for lanes 1 and 2.
   * Hold **Left encoder push** (`P1SW`) for lane 1 CC selection/pad presets.
   * Hold **Right encoder push** (`P2SW`) for lane 2 CC selection/pad presets.
   * Preset CC labels are displayed as `C091..C100`.
 
-* **REP Mode (`SW_REPEAT`)**
+* **REP Mode (`SW_REPEAT` switch)**
   * Encoder turns are unassigned by default in REPEAT mode.
   * If `SW_CC` is ON while in REPEAT mode, faders and encoders use CC behavior.
   * Left encoder push: arp type select.
@@ -59,7 +61,7 @@ Per-mode behavior:
   * Arp selector wraps around.
   * Pad repeat lock/unlock workflows are available in arp context (`repeatIsLocked`).
 
-* **Ultrasonic Mode (`SW_ULTRASONIC`)**
+* **Ultrasonic Mode (`SW_ULTRASONIC` switch)**
   * If `SW_CC` is ON while in ULTRASONIC mode, faders and encoders use CC behavior.
   * Hold **Left encoder push** to set ultrasonic target CC number.
   * Hold **Right encoder push** to set max ultrasonic distance range.
