@@ -195,11 +195,11 @@ byte switches[4][2] = {
   {SW_ULTRASONIC, ULTRASONIC_MASK},
   {SW_REPEAT, REPEAT_MASK}
 };
-byte switchBaselineRaw[4] = {HIGH, HIGH, HIGH, HIGH};
 bool prevCcSwitchOn = false;
 bool prevRepeatSwitchOn = false;
 bool prevUltrasonicSwitchOn = false;
 bool prevPlaySwitchOn = false;
+bool prevAllModeSwitchesOn = false;
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
@@ -207,7 +207,6 @@ bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 byte rightPush = RELEASED;
 byte leftPush = RELEASED;
-bool resetModeLatched = false;
 
 bool isActiveLevel(byte rawValue, uint8_t activeLevel) {
   if (activeLevel == INPUT_ACTIVE_LOW) {
@@ -228,48 +227,67 @@ void reinit();
 
 ModeContext deriveModeContext(const InputState& input) {
   bool allSwitchesOn = input.cc && input.repeat && input.ultrasonic && input.init;
-  if (allSwitchesOn) {
+  bool allSwitchesOnRising = allSwitchesOn && !prevAllModeSwitchesOn;
+
+  bool ccRising = input.cc && !prevCcSwitchOn;
+  bool repeatRising = input.repeat && !prevRepeatSwitchOn;
+  bool ultrasonicRising = input.ultrasonic && !prevUltrasonicSwitchOn;
+  bool playRising = input.init && !prevPlaySwitchOn;
+
+  if (allSwitchesOnRising) {
+    panicAllNotesOff();
+    reinit();
+    selectedMode = RuntimeMode::Reset;
     activeMode = RuntimeMode::Reset;
-    if (!resetModeLatched) {
-      reinit();
-      resetModeLatched = true;
-    }
+    forceModeLabelDisplay = true;
   }
   else {
-    if (resetModeLatched) {
-      selectedMode = RuntimeMode::Play;
-      resetModeLatched = false;
+    if (selectedMode == RuntimeMode::Reset) {
+      if (ccRising) {
+        selectedMode = RuntimeMode::Cc;
+        forceModeLabelDisplay = true;
+      }
+      else if (repeatRising) {
+        selectedMode = RuntimeMode::Repeat;
+        forceModeLabelDisplay = true;
+      }
+      else if (ultrasonicRising) {
+        selectedMode = RuntimeMode::Ultrasonic;
+        forceModeLabelDisplay = true;
+      }
+      else if (playRising) {
+        selectedMode = RuntimeMode::Play;
+        forceModeLabelDisplay = true;
+      }
+      activeMode = selectedMode;
     }
+    else {
+      if (ccRising) {
+        selectedMode = RuntimeMode::Cc;
+        forceModeLabelDisplay = true;
+      }
+      if (repeatRising) {
+        selectedMode = RuntimeMode::Repeat;
+        forceModeLabelDisplay = true;
+      }
+      if (ultrasonicRising) {
+        selectedMode = RuntimeMode::Ultrasonic;
+        forceModeLabelDisplay = true;
+      }
+      if (playRising) {
+        selectedMode = RuntimeMode::Play;
+        forceModeLabelDisplay = true;
+      }
 
-    bool ccRising = input.cc && !prevCcSwitchOn;
-    bool repeatRising = input.repeat && !prevRepeatSwitchOn;
-    bool ultrasonicRising = input.ultrasonic && !prevUltrasonicSwitchOn;
-    bool playRising = input.init && !prevPlaySwitchOn;
-
-    if (ccRising) {
-      selectedMode = RuntimeMode::Cc;
-      forceModeLabelDisplay = true;
+      activeMode = selectedMode;
     }
-    if (repeatRising) {
-      selectedMode = RuntimeMode::Repeat;
-      forceModeLabelDisplay = true;
-    }
-    if (ultrasonicRising) {
-      selectedMode = RuntimeMode::Ultrasonic;
-      forceModeLabelDisplay = true;
-    }
-    if (playRising) {
-      selectedMode = RuntimeMode::Play;
-      forceModeLabelDisplay = true;
-    }
-
-    activeMode = selectedMode;
   }
 
   prevCcSwitchOn = input.cc;
   prevRepeatSwitchOn = input.repeat;
   prevUltrasonicSwitchOn = input.ultrasonic;
   prevPlaySwitchOn = input.init;
+  prevAllModeSwitchesOn = allSwitchesOn;
 
   ModeContext context = {
     activeMode,
@@ -395,9 +413,6 @@ bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false,
 int selectedPushPin = -1;
 unsigned long padPressOrder[NB_PUSH] = {0,0,0,0,0,0,0,0};
 unsigned long nextPadPressOrder = 1;
-
-// Switch edge tracking (for SW_PLAY panic on press)
-bool prevInitMode = false;
 
 // Chords
 // Including NOTE (no chord).
@@ -593,7 +608,6 @@ void reinit() {
   selectedMode = RuntimeMode::Play;
   activeMode = RuntimeMode::Play;
   previousDisplayedMode = RuntimeMode::Play;
-  resetModeLatched = false;
   repeatSpeedDividend = 1;
   repeatSpeedDivisor = 4;
   globalStartNote = 48;
@@ -695,8 +709,6 @@ void appSetupImpl() {
   byte bootPlayRaw = readMuxDigitalStable(SW_PLAY);
   bool bootPlaySwitchOn = isModeSwitchActive(bootPlayRaw);
 
-  captureModeSwitchBaseline();
-
   readSwitches();
 
   // LCD:
@@ -726,13 +738,6 @@ void appLoopImpl() {
   bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
   showModeIfChanged(modeContext.activeMode);
 
-  // Panic: when SW_PLAY is pressed (mapped to INIT_MASK), send All Notes Off.
-  // We detect the rising edge of INIT_MASK.
-  bool initMode = currentInputState.init;
-  if (initMode && !prevInitMode) {
-    panicAllNotesOff();
-  }
-  prevInitMode = initMode;
   updatePads();
   io_iface::writeDigital(MAGNET, aPadIsPushed() ? LOW : HIGH);
 
@@ -1641,8 +1646,11 @@ void updatePads() {
           playPush(p, 1);
         }
         if (leftPush == RELEASED && rightPush == RELEASED) {
-          display_iface::clear();
-          display_iface::setColonOn(false);
+          byte currentNote = 0;
+          byte currentVelocity = 0;
+          if (getPadPlaybackState(p, currentNote, currentVelocity)) {
+            displayPrintString(getNoteFromMidiValue(currentNote));
+          }
         }
       }
     }
@@ -1798,13 +1806,6 @@ byte readMuxDigitalStable(byte channel) {
   return io_iface::readDigital(MUXSIG);
 }
 
-void captureModeSwitchBaseline() {
-  for (byte position = 0; position < 4; position++) {
-    byte sw = switches[position][0];
-    switchBaselineRaw[position] = readMuxDigitalStable(sw);
-  }
-}
-
 void readSwitches() {
 
   currentInputState = {false, false, false, false, false, false};
@@ -1812,11 +1813,7 @@ void readSwitches() {
     byte sw = switches[position][0];
     byte mask = switches[position][1];
     byte switchRaw = readMuxDigitalStable(sw);
-#if APP_MODE_SWITCH_USE_BASELINE
-    bool modeActive = (switchRaw != switchBaselineRaw[position]);
-#else
     bool modeActive = isModeSwitchActive(switchRaw);
-#endif
     if (modeActive) {
       if (mask == CC_MASK) {
         currentInputState.cc = true;

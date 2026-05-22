@@ -11,14 +11,16 @@ DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Se
 
 ## 🕹 Operating Modes
 
-Mode selection is event-driven:
+Mode selection behavior:
 
+* `SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, and `SW_PLAY` are rising-edge selectors.
 * `SW_CC` ON edge selects `CC` mode.
-* `SW_REPEAT` ON edge selects `REP` mode.
-* `SW_ULTRASONIC` ON edge selects `ULT` mode.
+* `SW_REPEAT` ON edge selects `REPEAT` mode.
+* `SW_ULTRASONIC` ON edge selects `ULTRASONIC` mode.
 * `SW_PLAY` ON edge selects `PLAY` mode.
-* If all four switches are ON together, `RES` mode is entered and `reinit()` is triggered once on entry.
-* Releasing switches does not change the selected non-reset mode; the latest ON edge wins when overlaps occur.
+* `RESET` triggers on the rising edge where all 4 mode switches are ON together (the last switch turned ON).
+* After RESET trigger, mode stays in `RESET` until a new mode-select ON edge occurs (`SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, or `SW_PLAY`).
+* For non-RESET mode selection, latest ON edge wins.
 
 Right after activation, display shows one of: `PLAY`, `CC`, `REP`, `ULT`, `RES`.
 
@@ -28,9 +30,9 @@ Quick controls overview:
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `PLAY` | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
 | `CC` | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
-| `REP` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
-| `ULT` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
-| `RES` | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+| `REPEAT` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
+| `ULTRASONIC` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
+| `RESET` | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
 
 Per-mode behavior:
 
@@ -50,21 +52,24 @@ Per-mode behavior:
   * Preset CC labels are displayed as `C091..C100`.
 
 * **REP Mode (`SW_REPEAT`)**
+  * Encoder turns are unassigned by default in REPEAT mode.
+  * If `SW_CC` is ON while in REPEAT mode, faders and encoders use CC behavior.
   * Left encoder push: arp type select.
   * Right encoder push: arp rate / divisor edit.
   * Arp selector wraps around.
   * Pad repeat lock/unlock workflows are available in arp context (`repeatIsLocked`).
 
 * **Ultrasonic Mode (`SW_ULTRASONIC`)**
+  * If `SW_CC` is ON while in ULTRASONIC mode, faders and encoders use CC behavior.
   * Hold **Left encoder push** to set ultrasonic target CC number.
   * Hold **Right encoder push** to set max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
-* **RES Mode (all 4 mode switches ON)**
-  * `reinit()` runs once on RES entry.
+* **RESET Mode (all 4 mode switches ON edge)**
+  * `reinit()` runs once when the last of the 4 mode switches is turned ON.
   * Left encoder push: MIDI channel (`CHx`).
   * Right encoder push: base note / transpose reference.
-  * On RES exit, active mode returns to `PLAY`.
+  * RESET stays active until a new mode ON edge is received (`CC`, `REPEAT`, `ULTRASONIC`, or `PLAY`).
 
 * **DRUM scale note path**
   * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
@@ -123,7 +128,7 @@ Per-mode behavior:
 * Incoming MIDI clock drives arp timing when transport sync is active.
 * During synced arp playback, note-layout changes (for example octave, chord, scale, or lock-related changes) take effect on the next scheduled step instead of forcing an immediate base-note restart.
 * Tick-based tempo LED display (one LED at a time).
-* Panic on Init-switch edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
+* Panic on RESET entry edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
 
 ### LED Behavior
 * 4 LEDs reflect pad columns when playing pads:
