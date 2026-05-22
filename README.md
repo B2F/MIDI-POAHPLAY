@@ -86,7 +86,7 @@ This project is designed for a specific hardware footprint. Because it uses **8 
 *   **Sensor:** HC-SR04 Ultrasonic Sensor.
 *   **Physical Feedback:** 4x LEDs (Tempo) and 1x Solenoid/Magnet (Triggered via Pin A5).
 
-## 🎹 Pin & Multiplexer Mapping
+## 🎹 Default Pin & Multiplexer Mapping (Nano Profile)
 
 | Component | Pin / Mux Channel |
 | :--- | :--- |
@@ -108,6 +108,94 @@ This project is designed for a specific hardware footprint. Because it uses **8 
 | **11** | `SW_PLAY` (Init/Reset Mode Switch) |
 | **14** | `P2SW` (Right Encoder Push) |
 | **15** | `P1SW` (Left Encoder Push) |
+
+## 🧩 Compile-Time Wiring and Board Profiles
+
+Firmware wiring and board selection is now profile-driven. You can switch targets without editing core logic.
+
+### Built-in profiles
+
+* **Board profiles**
+  * `BOARD_NANO`
+  * `BOARD_PRO_MICRO`
+* **Wiring profile headers**
+  * `"wirings/nano_default.h"`
+  * `"wirings/pro_micro_clone_safe.h"`
+* **Mapping profiles**
+  * `MAPPING_DEFAULT`
+
+Profile definitions live in:
+
+* `src/profiles/boards/`
+* `src/profiles/wirings/`
+* `src/profiles/mappings/`
+* Selection/validation: `src/profiles/selected_profiles.h`
+* Global selectors: `src/config/build_config.h`
+
+### Existing profile selection (tracked)
+
+Set profile selectors in `platformio.ini` via `build_flags`.
+
+`nanoatmega328` uses serial Nano defaults:
+
+* `APP_BOARD_PROFILE=BOARD_NANO`
+* `APP_WIRING_PROFILE_HEADER="wirings/nano_default.h"`
+* `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
+* `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
+
+`promicro16` uses a Pro Micro clone-safe wiring baseline:
+
+* `APP_BOARD_PROFILE=BOARD_PRO_MICRO`
+* `APP_WIRING_PROFILE_HEADER="wirings/pro_micro_clone_safe.h"`
+* `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
+* `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
+
+### Local custom profiles (not versioned)
+
+Use local files when you want custom mappings/wiring without changing tracked repository defaults.
+
+1. Create local build override:
+   * `src/config/build_config.local.h`
+   * Starter template: `src/config/build_config.local.h.example`
+2. (Optional) Create local profile definitions:
+   * `src/profiles/local/local_profiles.h`
+   * Starter template: `src/profiles/local/local_profiles.h.example`
+   * Local wiring supports encoder pins, push button pins (`P1..P8`), faders, LEDs, ultrasonic, magnet, and mux switch channels (`SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, `SW_PLAY`).
+3. Switch selectors in `build_config.local.h`.
+
+These local paths are ignored by git:
+
+* `src/config/build_config.local.h`
+* `src/profiles/local/`
+
+Minimal example (`src/config/build_config.local.h`):
+
+```cpp
+#ifndef BUILD_CONFIG_LOCAL_H
+#define BUILD_CONFIG_LOCAL_H
+
+#define APP_BOARD_PROFILE BOARD_NANO
+#define APP_WIRING_PROFILE_HEADER "local/local_profiles.h"
+#define APP_MAPPING_PROFILE MAPPING_LOCAL
+#define APP_MIDI_TRANSPORT MIDI_TRANSPORT_SERIAL
+
+#endif
+```
+
+Quick start:
+
+* `cp src/config/build_config.local.h.example src/config/build_config.local.h`
+
+If `APP_MAPPING_PROFILE` is `MAPPING_LOCAL`, firmware expects:
+
+* `src/profiles/local/local_profiles.h`
+* `kLocalMappingProfile` definition compatible with `MappingProfile` (pad CC presets + default CC lane numbers/values + default ultrasonic CC + fader calibration + ultrasonic tuning).
+* Chord and scale tables are built into `powaplay.ino` and are not part of local mapping overrides.
+* Fader/ultrasonic tuning fields include min/max/threshold and smoothing/deadband/update interval parameters.
+
+If local mapping is selected and missing, compilation fails with an explicit error.
+
+If `APP_WIRING_PROFILE_HEADER` points to a missing header, compilation fails with an explicit include error.
 
 ---
 
@@ -141,6 +229,10 @@ Toggle the physical Mode Switches to change functionality:
   * Left encoder push + turn encoder 1: set max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
+* **DRUM scale note path**
+  * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
+  * In DRUM scale, this direct map is used for playback instead of the generic scale-step transpose path.
+
 * **Init / Setup Mode (`SW_PLAY` logic)**
   * Encoder 1: MIDI channel (`CHx`).
   * Encoder 2: base note / transpose reference (note name shown).
@@ -171,11 +263,13 @@ Use PlatformIO CLI from the repository root:
 
 1. Install PlatformIO Core (if needed):
    * `python -m pip install -U platformio`
-2. Build firmware:
+2. Build firmware (Nano baseline):
    * `python -m platformio run -e nanoatmega328`
-3. Upload firmware:
+3. Upload firmware (Nano baseline):
    * `python -m platformio run -e nanoatmega328 -t upload --upload-port <PORT>`
-4. Open serial monitor (firmware baud rate):
+4. Build alternate tracked profile (Pro Micro clone-safe):
+   * `python -m platformio run -e promicro16`
+5. Open serial monitor (firmware baud rate):
    * `python -m platformio device monitor -p <PORT> -b 38400`
 
 Notes:

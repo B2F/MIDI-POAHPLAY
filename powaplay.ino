@@ -9,6 +9,10 @@
 #include <Encoder.h>
 #include <CD74HC4067.h>
 #include <HCSR04.h>
+#include "src/profiles/selected_profiles.h"
+#include "src/platform/midi_iface.h"
+#include "src/hal/io_iface.h"
+#include "src/hal/display_iface.h"
 
 const unsigned long BAUD_RATE PROGMEM = 38400;
 
@@ -26,12 +30,12 @@ const byte NB_PUSH PROGMEM = 8;
 
 const byte NB_ENCODERS PROGMEM = 2;
 
-const byte P1CLK PROGMEM = 2;
-const byte P1DT PROGMEM = 4;
-const byte P1SW PROGMEM = 15;
-const byte P2CLK PROGMEM = 3;
-const byte P2DT PROGMEM = 5;
-const byte P2SW PROGMEM = 14;
+const byte P1CLK PROGMEM = kSelectedWiringProfile.encoder1Clk;
+const byte P1DT PROGMEM = kSelectedWiringProfile.encoder1Dt;
+const byte P1SW PROGMEM = kSelectedWiringProfile.encoder1Sw;
+const byte P2CLK PROGMEM = kSelectedWiringProfile.encoder2Clk;
+const byte P2DT PROGMEM = kSelectedWiringProfile.encoder2Dt;
+const byte P2SW PROGMEM = kSelectedWiringProfile.encoder2Sw;
 
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
@@ -46,26 +50,33 @@ const byte ENCODER_STEP PROGMEM = 4;
 
 // Multiplexer
 
-const byte MUXSIG PROGMEM = A0;
-CD74HC4067 mux(A1, A2, A3, A4);
+const byte MUXSIG PROGMEM = kSelectedWiringProfile.muxSig;
+CD74HC4067 mux(kSelectedWiringProfile.muxS0, kSelectedWiringProfile.muxS1, kSelectedWiringProfile.muxS2, kSelectedWiringProfile.muxS3);
 
 // MIDI
 
-struct HairlessMidiSettings : public midi::DefaultSettings
-{
-   static const bool UseRunningStatus = false;
-   static const long BaudRate = BAUD_RATE;
+byte midiCC[2] = {
+  kSelectedMappingProfile.defaultCcLane1,
+  kSelectedMappingProfile.defaultCcLane2,
 };
-
-MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, HairlessMidiSettings);
-
-byte midiCC[2] = {20, 21};
-byte midiCCValue[2] = {63, 63};
+byte midiCCValue[2] = {
+  kSelectedMappingProfile.defaultCcValueLane1,
+  kSelectedMappingProfile.defaultCcValueLane2,
+};
 byte lastSentCCNumber[2] = {255, 255};
 byte lastSentCCValue[2] = {255, 255};
 // https://professionalcomposers.com/midi-cc-list/
 // 5, 7, 10, 71, 72, 73, 74, 80, 81, 84, 91, 92, 93, 94, 95 - 98-101.
-const byte midiCCPresets[NB_PUSH] PROGMEM = {91, 92, 93, 94, 95, 98, 99, 100};
+const byte midiCCPresets[NB_PUSH] PROGMEM = {
+  kSelectedMappingProfile.midiCcPresets[0],
+  kSelectedMappingProfile.midiCcPresets[1],
+  kSelectedMappingProfile.midiCcPresets[2],
+  kSelectedMappingProfile.midiCcPresets[3],
+  kSelectedMappingProfile.midiCcPresets[4],
+  kSelectedMappingProfile.midiCcPresets[5],
+  kSelectedMappingProfile.midiCcPresets[6],
+  kSelectedMappingProfile.midiCcPresets[7]
+};
 byte midiChannel = 2;
 byte programChange = 0;
 byte globalVelocity = 127;
@@ -79,47 +90,47 @@ unsigned long lastNoteRepeat = 0;
 
 // LCD
 
-const byte LCD_CLK PROGMEM = 12;
-const byte LCD_DIO PROGMEM = 11;
+const byte LCD_CLK PROGMEM = kSelectedWiringProfile.lcdClk;
+const byte LCD_DIO PROGMEM = kSelectedWiringProfile.lcdDio;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Faders:
 
-const byte F1 PROGMEM = A6;
-const byte F2 PROGMEM = A7;
+const byte F1 PROGMEM = kSelectedWiringProfile.fader1;
+const byte F2 PROGMEM = kSelectedWiringProfile.fader2;
 
 const byte faderPin[2] PROGMEM = {F1, F2};
 const byte NB_FADERS PROGMEM = 2;
 uint16_t faderPos[NB_FADERS] = {0, 0};
 uint16_t faderVal[NB_FADERS] = {0, 0};
 
-const uint16_t MAX_FADER_VALUE = 970;
-const uint16_t MIN_FADER_VALUE = 50;
-const uint16_t FADER_THRESHOLD = 30;
+const uint16_t MAX_FADER_VALUE = kSelectedMappingProfile.faderMaxValue;
+const uint16_t MIN_FADER_VALUE = kSelectedMappingProfile.faderMinValue;
+const uint16_t FADER_THRESHOLD = kSelectedMappingProfile.faderThreshold;
 
 // Leds:
 
-const byte L1 PROGMEM = 10;
-const byte L2 PROGMEM = 9;
-const byte L3 PROGMEM = 8;
-const byte L4 PROGMEM = 7;
+const byte L1 PROGMEM = kSelectedWiringProfile.led1;
+const byte L2 PROGMEM = kSelectedWiringProfile.led2;
+const byte L3 PROGMEM = kSelectedWiringProfile.led3;
+const byte L4 PROGMEM = kSelectedWiringProfile.led4;
 
 // Ultrasonic
 
-const byte triggerPin PROGMEM = 13;
-const byte echoPin PROGMEM = 6;
+const byte triggerPin PROGMEM = kSelectedWiringProfile.triggerPin;
+const byte echoPin PROGMEM = kSelectedWiringProfile.echoPin;
 
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
-byte MIN_ULTRASONIC_DISTANCE_CM = 2;
-int maxUltrasonicDistanceCm = 10;
-byte ultrasonicCC = 100;
+byte MIN_ULTRASONIC_DISTANCE_CM = kSelectedMappingProfile.minUltrasonicDistanceCm;
+int maxUltrasonicDistanceCm = kSelectedMappingProfile.defaultUltrasonicMaxDistanceCm;
+byte ultrasonicCC = kSelectedMappingProfile.defaultUltrasonicCc;
 byte lastUltrasonicControlValue = 255;
-const int MAX_ULTRASONIC_DISTANCE_CAP_CM = 35;
-const float ULTRASONIC_SMOOTHING_ALPHA = 0.35;
-const byte ULTRASONIC_CC_DEADBAND = 2;
-const unsigned long ULTRASONIC_MIN_UPDATE_INTERVAL_US = 15000;
+const int MAX_ULTRASONIC_DISTANCE_CAP_CM = kSelectedMappingProfile.maxUltrasonicDistanceCapCm;
+const float ULTRASONIC_SMOOTHING_ALPHA = kSelectedMappingProfile.ultrasonicSmoothingAlpha;
+const byte ULTRASONIC_CC_DEADBAND = kSelectedMappingProfile.ultrasonicCcDeadband;
+const unsigned long ULTRASONIC_MIN_UPDATE_INTERVAL_US = kSelectedMappingProfile.ultrasonicMinUpdateIntervalUs;
 int ultrasonicMedianBuffer[3] = {0, 0, 0};
 byte ultrasonicMedianCount = 0;
 byte ultrasonicMedianIndex = 0;
@@ -129,14 +140,14 @@ unsigned long lastUltrasonicUpdateMicros = 0;
 
 // Magnet
 
-const byte MAGNET PROGMEM = A5;
+const byte MAGNET PROGMEM = kSelectedWiringProfile.magnetPin;
 
 // Switches
 
-const byte SW_CC PROGMEM = 0;
-const byte SW_REPEAT PROGMEM = 1;
-const byte SW_ULTRASONIC PROGMEM = 10;
-const byte SW_PLAY PROGMEM = 11;
+const byte SW_CC PROGMEM = kSelectedWiringProfile.swCcChannel;
+const byte SW_REPEAT PROGMEM = kSelectedWiringProfile.swRepeatChannel;
+const byte SW_ULTRASONIC PROGMEM = kSelectedWiringProfile.swUltrasonicChannel;
+const byte SW_PLAY PROGMEM = kSelectedWiringProfile.swPlayChannel;
 
 const byte INIT_MASK PROGMEM =       B00000010;
 const byte CC_MASK PROGMEM =         B00000100;
@@ -207,7 +218,16 @@ const char* ARP_NAMES[NB_ARP_TYPES] = {
   "ASGN"
 };
 
-const byte pushPin[NB_PUSH] = {4, 3, 2, 5, 6, 7, 8, 9};
+const byte pushPin[NB_PUSH] = {
+  kSelectedWiringProfile.pushPins[0],
+  kSelectedWiringProfile.pushPins[1],
+  kSelectedWiringProfile.pushPins[2],
+  kSelectedWiringProfile.pushPins[3],
+  kSelectedWiringProfile.pushPins[4],
+  kSelectedWiringProfile.pushPins[5],
+  kSelectedWiringProfile.pushPins[6],
+  kSelectedWiringProfile.pushPins[7],
+};
 byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
@@ -303,7 +323,16 @@ const byte SCALES[NB_SCALES][MAX_NOTES] = {
 };
 // Melodics-compatible GM drum map:
 // KICK(36), SNARE(38), CHH(42), OHH(46), LOW TOM(41), MID TOM(45), CRASH(49), RIDE(51)
-const byte DRUM_NOTES_MELODICS[MAX_NOTES] = {36, 38, 42, 46, 41, 45, 49, 51};
+const byte DRUM_NOTES_MELODICS[MAX_NOTES] = {
+  36,  // Pad 1 drum note: Kick
+  38,  // Pad 2 drum note: Snare
+  42,  // Pad 3 drum note: Closed Hi-Hat
+  46,  // Pad 4 drum note: Open Hi-Hat
+  41,  // Pad 5 drum note: Low Tom
+  45,  // Pad 6 drum note: Mid Tom
+  49,  // Pad 7 drum note: Crash
+  51,  // Pad 8 drum note: Ride
+};
 const byte CHORDS[NB_CHORDS][MAX_NOTES] = {
   {0, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // NOTE
   {0, 4, 7, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // MAJ
@@ -333,10 +362,10 @@ void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount,
 void buildOrderedActivePads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos, bool pinStart);
 
 void reinit() {
-  midiCC[0] = 20;
-  midiCC[1] = 21;
-  midiCCValue[0] = 63;
-  midiCCValue[1] = 63;
+  midiCC[0] = kSelectedMappingProfile.defaultCcLane1;
+  midiCC[1] = kSelectedMappingProfile.defaultCcLane2;
+  midiCCValue[0] = kSelectedMappingProfile.defaultCcValueLane1;
+  midiCCValue[1] = kSelectedMappingProfile.defaultCcValueLane2;
   lastSentCCNumber[0] = 255;
   lastSentCCNumber[1] = 255;
   lastSentCCValue[0] = 255;
@@ -345,8 +374,8 @@ void reinit() {
   programChange = 0;
   globalVelocity = 127;
   globalNoteOffset = 0;
-  ultrasonicCC = 100;
-  maxUltrasonicDistanceCm = 10;
+  ultrasonicCC = kSelectedMappingProfile.defaultUltrasonicCc;
+  maxUltrasonicDistanceCm = kSelectedMappingProfile.defaultUltrasonicMaxDistanceCm;
   lastUltrasonicControlValue = 255;
   ultrasonicMedianBuffer[0] = 0;
   ultrasonicMedianBuffer[1] = 0;
@@ -410,10 +439,16 @@ void reinit() {
   }
 }
 
-void setup() {
+void appSetupImpl();
+void appLoopImpl();
+
+void setup() { appSetupImpl(); }
+void loop() { appLoopImpl(); }
+
+void appSetupImpl() {
 
   Serial.begin(BAUD_RATE);
-  while(!Serial) ;
+  app_midi::begin();
 
   Serial.print("bnobs.art P0AH PLAY --- Compiled on ");
   Serial.print(__DATE__);
@@ -427,26 +462,26 @@ void setup() {
   }
 
   // Encoders:
-  pinMode(P1CLK, INPUT);
-  pinMode(P1DT, INPUT);
-  pinMode(P2CLK, INPUT);
-  pinMode(P2DT, INPUT);
+  io_iface::setPinMode(P1CLK, INPUT);
+  io_iface::setPinMode(P1DT, INPUT);
+  io_iface::setPinMode(P2CLK, INPUT);
+  io_iface::setPinMode(P2DT, INPUT);
 
   // Leds:
-  pinMode(L1, OUTPUT);
-  pinMode(L2, OUTPUT);
-  pinMode(L3, OUTPUT);
-  pinMode(L4, OUTPUT);
+  io_iface::setPinMode(L1, OUTPUT);
+  io_iface::setPinMode(L2, OUTPUT);
+  io_iface::setPinMode(L3, OUTPUT);
+  io_iface::setPinMode(L4, OUTPUT);
 
   // Magnet:
-  pinMode(MAGNET, OUTPUT);
+  io_iface::setPinMode(MAGNET, OUTPUT);
 
   // mux sig:
-  pinMode(MUXSIG, INPUT_PULLUP);
+  io_iface::setPinMode(MUXSIG, INPUT_PULLUP);
 
   // Internal led:
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  io_iface::setPinMode(LED_BUILTIN, OUTPUT);
+  io_iface::writeDigital(LED_BUILTIN, LOW);
 
   // MIDI Clock:
   quarterNoteTime = micros();
@@ -455,26 +490,27 @@ void setup() {
   readSwitches();
 
   // LCD:
-  display.begin();
-  display.print("P0AH");
+  display_iface::init(display);
+  display_iface::begin();
+  display_iface::print("P0AH");
   delay(1000);
   if (checkMode(INIT_MASK)) {
     readSwitches();
     if (checkMode(INIT_MASK)) {
-      display.blink();
+      display_iface::blink();
       readSwitches();
       if (checkMode(INIT_MASK)) {
-        display.print("P0AH PLAY");
+        display_iface::print("P0AH PLAY");
         readSwitches();
         if (checkMode(INIT_MASK)) {
-          display.snake(2, 70);
+          display_iface::snake(2, 70);
         }
       }
     }
   }
 }
 
-void loop() {
+void appLoopImpl() {
 
   unsigned long loopTime = micros();
 
@@ -629,9 +665,9 @@ void updateChannelFromEncoder(byte selected) {
       wrappedChannel += 16;
     }
     midiChannel = wrappedChannel + 1;
-    display.clear();
-    display.setColonOn(false);
-    display.print("CH" + String(midiChannel));
+    display_iface::clear();
+    display_iface::setColonOn(false);
+    display_iface::print("CH" + String(midiChannel));
     encoderPos[selected] = encoderVal[selected];
   }
 }
@@ -660,9 +696,9 @@ void chordSelect(byte selected) {
     wrappedChord += NB_CHORDS;
   }
   selectedChord = wrappedChord;
-  display.clear();
-  display.print(CHORD_NAMES[selectedChord]);
-  display.setColonOn(false);
+  display_iface::clear();
+  display_iface::print(CHORD_NAMES[selectedChord]);
+  display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   syncHeldPadsAfterNoteLayoutChange();
 }
@@ -681,9 +717,9 @@ void arpSelect(byte selected) {
   }
   selectedArpType = wrappedArpType;
 
-  display.clear();
-  display.print(ARP_NAMES[selectedArpType]);
-  display.setColonOn(false);
+  display_iface::clear();
+  display_iface::print(ARP_NAMES[selectedArpType]);
+  display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   resetAllArpStates();
 }
@@ -701,16 +737,16 @@ void updateOctaveFromFader(byte selected) {
   }
   octave = round(relativeValue / 100) - 4;
   if (!shouldSuppressLiveDisplay()) {
-    display.clear();
+    display_iface::clear();
     if (octave >= 0) {
       char label[8];
       snprintf(label, sizeof(label), "%doct", octave);
-      display.print(label);
+      display_iface::print(label);
     }
     else {
       char label[8];
       snprintf(label, sizeof(label), "%doc", octave);
-      display.print(label);
+      display_iface::print(label);
     }
   }
   globalNoteOffset = octave * 12;
@@ -742,10 +778,10 @@ void updateOctaveFromEncoder(byte selected) {
   encoderPos[selected] = encoderVal[selected];
 }
 
-bool updateMidiSerial() {
+void updateMidiSerial() {
 
   if (!Serial.available()){
-    return false;
+    return;
   }
 
   unsigned long loopTime = micros();
@@ -791,13 +827,15 @@ bool updateMidiSerial() {
 
     playPadsArp();
   }
+
+  return;
 }
 
 void writeLeds(byte s1, byte s2, byte s3, byte s4) {
   byte ledPin[4] = {L1, L2, L3, L4};
   byte states[4] = {s1, s2, s3, s4};
   for (byte i = 0; i < 4; i++) {
-    digitalWrite(ledPin[i], states[i]);
+    io_iface::writeDigital(ledPin[i], states[i]);
   }
 }
 
@@ -813,9 +851,9 @@ void scaleSelect(byte selected) {
     wrappedScale += NB_SCALES;
   }
   selectedScale = wrappedScale;
-  display.clear();
-  display.print(SCALE_NAMES[selectedScale]);
-  display.setColonOn(false);
+  display_iface::clear();
+  display_iface::print(SCALE_NAMES[selectedScale]);
+  display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   syncHeldPadsAfterNoteLayoutChange();
 }
@@ -889,7 +927,7 @@ const char* getNoteFromMidiValue(byte midiValue) {
 }
 
 int readFader(byte selected) {
-  faderVal[selected] = analogRead(faderPin[selected]);
+  faderVal[selected] = io_iface::readAnalog(faderPin[selected]);
   if (
     faderVal[selected] > faderPos[selected] + FADER_THRESHOLD ||
     faderVal[selected] < faderPos[selected] - FADER_THRESHOLD
@@ -921,8 +959,8 @@ void updateVelocity(byte globalMidiValue, byte localMidiValue) {
   if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
     pushVelocity[selectedPushPin] = localMidiValue;
     if (!shouldSuppressLiveDisplay()) {
-      display.clear();
-      display.print('v');
+      display_iface::clear();
+      display_iface::print('v');
       displayPrint(localMidiValue, false, false);
     }
   }
@@ -932,8 +970,8 @@ void updateVelocity(byte globalMidiValue, byte localMidiValue) {
       pushVelocity[selectedPushPin] = globalVelocity;
     }
     if (!shouldSuppressLiveDisplay()) {
-      display.clear();
-      display.print('v');
+      display_iface::clear();
+      display_iface::print('v');
       displayPrint(globalVelocity, false, false);
     }
   }
@@ -969,18 +1007,18 @@ void moveOctave(bool up) {
   else {
     octave--;
   }
-  display.clear();
+  display_iface::clear();
   if (octave >= 0) {
     char label[8];
     snprintf(label, sizeof(label), "%doct", octave);
-    display.print(label);
+    display_iface::print(label);
   }
   else {
     char label[8];
     snprintf(label, sizeof(label), "%doc", octave);
-    display.print(label);
+    display_iface::print(label);
   }
-  display.setColonOn(false);
+  display_iface::setColonOn(false);
   globalNoteOffset = octave * 12;
 
   // Live transposition for encoder octave changes too.
@@ -1075,6 +1113,8 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
   currentVelocity = pushVelocity[pin];
 
   if (selectedScale == SCALE_INDEX_DRUM) {
+    // DRUM scale is intentionally a direct GM drum note map for Melodics/E-Drums compatibility.
+    // We bypass scale step offsets here so each pad always sends the expected drum voice.
     currentVelocity = pushSettingsLocked[pin] ? pushVelocity[pin] : globalVelocity;
     currentNote = DRUM_NOTES_MELODICS[pin];
     return true;
@@ -1303,8 +1343,8 @@ void buildOrderedActivePads(byte sourcePad, byte arpPads[MAX_NOTES], byte &valid
 void panicAllNotesOff() {
   // Send All Notes Off (CC123) + All Sound Off (CC120), then clear local tracking.
   // This is a safety net if something ever gets stuck.
-  MIDI.sendControlChange(123, 0, midiChannel);
-  MIDI.sendControlChange(120, 0, midiChannel);
+  app_midi::sendControlChange(123, 0, midiChannel);
+  app_midi::sendControlChange(120, 0, midiChannel);
 
   for (byte p = 0; p < NB_PUSH; p++) {
     if (padNoteIsOn[p]) {
@@ -1326,18 +1366,18 @@ void updatePadsLock(bool lock) {
   for (byte p = 0; p < NB_PUSH; p++) {
 
     if (isPushed[p] == PUSHED) {
-      display.clear();
+      display_iface::clear();
       if (lock == false) {
         pushSettingsLocked[p] = true;
         char label[6];
         snprintf(label, sizeof(label), "PAd%u", p + 1);
-        display.print(label);
+        display_iface::print(label);
       }
       else {
         pushSettingsLocked[p] = false;
-        display.print("GL0b");
+        display_iface::print("GL0b");
       }
-      display.setColonOn(false);
+      display_iface::setColonOn(false);
     }
   }
   syncHeldPadsAfterNoteLayoutChange();
@@ -1373,7 +1413,7 @@ void updatePads() {
   for (byte p = 0; p < NB_PUSH; p++) {
 
     mux.channel(pushPin[p]);
-    byte sensorVal = digitalRead(MUXSIG);
+    byte sensorVal = io_iface::readDigital(MUXSIG);
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
       byte orderedAnchorBeforePress = UNASSIGNED;
@@ -1396,8 +1436,8 @@ void updatePads() {
           playPush(p, 1);
         }
         if (leftPush == RELEASED && rightPush == RELEASED) {
-          display.clear();
-          display.setColonOn(false);
+          display_iface::clear();
+          display_iface::setColonOn(false);
         }
       }
     }
@@ -1541,23 +1581,23 @@ void readSwitches() {
     byte sw = switches[position][0];
     byte mask = switches[position][1];
     mux.channel(sw);
-    if (digitalRead(MUXSIG) == true) {
+    if (io_iface::readDigital(MUXSIG) == true) {
       currentPlayMode |= mask;
     }
   }
 
   mux.channel(P1SW);
-  leftPush = digitalRead(MUXSIG);
+  leftPush = io_iface::readDigital(MUXSIG);
   mux.channel(P2SW);
-  rightPush = digitalRead(MUXSIG);
+  rightPush = io_iface::readDigital(MUXSIG);
 }
 
 void updateMidiControlFromEncoder(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
     midiCC[selected] = getMidiValueFromEncoder(midiCC[selected], encoderVal[selected], encoderPos[selected]);
     encoderPos[selected] = encoderVal[selected];
-    display.clear();
-    display.print('C');
+    display_iface::clear();
+    display_iface::print('C');
     displayPrint(midiCC[selected], false, false);
   }
 }
@@ -1566,7 +1606,7 @@ bool sendControlChangeIfChanged(byte lane, byte ccNumber, byte ccValue) {
   if (lastSentCCNumber[lane] == ccNumber && lastSentCCValue[lane] == ccValue) {
     return false;
   }
-  MIDI.sendControlChange(ccNumber, ccValue, midiChannel);
+  app_midi::sendControlChange(ccNumber, ccValue, midiChannel);
   lastSentCCNumber[lane] = ccNumber;
   lastSentCCValue[lane] = ccValue;
   return true;
@@ -1597,8 +1637,8 @@ void updateMidiCCValueFromEncoder(byte selected) {
   if (shouldSuppressLiveCCDisplay()) {
     return;
   }
-  display.clear();
-  display.print('c');
+  display_iface::clear();
+  display_iface::print('c');
   displayPrint(midiCCValue[selected], false, false);
 }
 
@@ -1615,8 +1655,8 @@ void updateCCValueFromFader(byte selected) {
   if (shouldSuppressLiveCCDisplay()) {
     return;
   }
-  display.clear();
-  display.print('c');
+  display_iface::clear();
+  display_iface::print('c');
   displayPrint(midiCCValue[selected], false, false);
 }
 
@@ -1658,19 +1698,19 @@ void updateArpRateFromEncoder(byte selected) {
     for (byte pad = 0; pad < NB_PUSH; pad++) {
       resetArpState(pad);
     }
-    display.clear();
+    display_iface::clear();
     char label[6];
     snprintf(label, sizeof(label), " 1%u", repeatSpeedDivisor);
-    display.print(label);
-    display.setColonOn(true);
+    display_iface::print(label);
+    display_iface::setColonOn(true);
   }
 }
 
 void updateUltrasonicCC(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
     ultrasonicCC = getMidiValueFromEncoder(ultrasonicCC, encoderVal[selected], encoderPos[selected]);
-    display.clear();
-    display.print('C');
+    display_iface::clear();
+    display_iface::print('C');
     displayPrint(ultrasonicCC, false, false);
     encoderPos[selected] = encoderVal[selected];
   }
@@ -1693,8 +1733,8 @@ void updateUltrasonicDistance(byte selected) {
       maxUltrasonicDistanceCm = (encoderVal[selected] >= encoderPos[selected]) ? 1 : -1;
     }
 
-    display.clear();
-    display.print('d');
+    display_iface::clear();
+    display_iface::print('d');
     displayPrint(maxUltrasonicDistanceCm, false, false);
     encoderPos[selected] = encoderVal[selected];
   }
@@ -1828,10 +1868,10 @@ void trackUltrasonicChanges() {
   }
 
   if (ultrasonicControlValue != lastUltrasonicControlValue) {
-    MIDI.sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
+    app_midi::sendControlChange(ultrasonicCC, ultrasonicControlValue, midiChannel);
     if (!shouldSuppressLiveCCDisplay()) {
-      display.clear();
-      display.print('c');
+      display_iface::clear();
+      display_iface::print('c');
       displayPrint(ultrasonicControlValue, false, false);
     }
     lastUltrasonicControlValue = ultrasonicControlValue;
@@ -1848,40 +1888,40 @@ void selectCCPreset(byte selected) {
 
     byte presetCC = pgm_read_byte(&midiCCPresets[p]);
     midiCC[selected] = presetCC;
-    display.clear();
-    display.setColonOn(false);
+    display_iface::clear();
+    display_iface::setColonOn(false);
     char label[5];
     snprintf(label, sizeof(label), "C%03u", presetCC);
-    display.print(label);
+    display_iface::print(label);
   }
 }
 
 void displayPrint(const char string[], bool semicolon, bool clear) {
   prepareDisplay(semicolon, clear);
-  display.print(string);
+  display_iface::print(string);
 }
 
 void displayPrint(int string, bool semicolon, bool clear) {
   prepareDisplay(semicolon, clear);
-  display.print(string);
+  display_iface::print(String(string));
 }
 
 void displayPrintString(String s) {
-  display.setColonOn(false);
-  display.clear();
-  display.print(s);
+  display_iface::setColonOn(false);
+  display_iface::clear();
+  display_iface::print(s);
 }
 
 void displayPrintString(const char s[]) {
-  display.setColonOn(false);
-  display.clear();
-  display.print(s);
+  display_iface::setColonOn(false);
+  display_iface::clear();
+  display_iface::print(s);
 }
 
 void prepareDisplay(bool semicolon, bool clear) {
-  semicolon ? display.setColonOn(true) : display.setColonOn(false);
+  semicolon ? display_iface::setColonOn(true) : display_iface::setColonOn(false);
   if (clear) {
-    display.clear();
+    display_iface::clear();
   }
 }
 
@@ -1905,17 +1945,17 @@ void sendNote(byte note, byte velocity, bool on) {
       continue;
     }
     on ?
-      MIDI.sendNoteOn(note + interval, velocity, midiChannel) :
-      MIDI.sendNoteOff(note + interval, velocity, midiChannel);
+      app_midi::sendNoteOn(note + interval, velocity, midiChannel) :
+      app_midi::sendNoteOff(note + interval, velocity, midiChannel);
   }
 
   if (on) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    digitalWrite(MAGNET, HIGH);
+    io_iface::writeDigital(LED_BUILTIN, HIGH);
+    io_iface::writeDigital(MAGNET, HIGH);
   }
   else {
-    digitalWrite(LED_BUILTIN, LOW);
-    digitalWrite(MAGNET, LOW);
+    io_iface::writeDigital(LED_BUILTIN, LOW);
+    io_iface::writeDigital(MAGNET, LOW);
   }
 }
 

@@ -1,2 +1,4 @@
 .pio
-
+.venv
+src/config/build_config.local.h
+src/profiles/local/
