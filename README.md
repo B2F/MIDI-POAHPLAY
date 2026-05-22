@@ -27,10 +27,10 @@ Quick controls overview:
 | Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `PLAY` | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
-| `CC` | CC lane 1 value | CC lane 2 value | CC lane 1 value (no push) | CC lane 2 value (no push) | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
-| `REP` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | Arp type select + repeat unlock workflow | Arp speed/divisor edit + repeat lock workflow |
-| `ULT` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | Ultrasonic target CC select | Ultrasonic max distance edit |
-| `RES` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+| `CC` | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
+| `REP` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
+| `ULT` | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
+| `RES` | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
 
 Per-mode behavior:
 

@@ -716,6 +716,7 @@ void appLoopImpl() {
 
   readSwitches();
   ModeContext modeContext = deriveModeContext(currentInputState);
+  bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
   showModeIfChanged(modeContext.activeMode);
 
   // Panic: when SW_PLAY is pressed (mapped to INIT_MASK), send All Notes Off.
@@ -749,7 +750,7 @@ void appLoopImpl() {
   }
 
   // Encoders et faders (sans encoder push)
-  if (modeContext.ccActive) {
+  if (modeContext.ccActive || ccOverlayInSpecialMode) {
     updateCCValueFromFader(0);
     updateCCValueFromFader(1);
 
@@ -766,7 +767,7 @@ void appLoopImpl() {
 
     // Same reservation rule in non-CC mode: any encoder push pauses both
     // free-encoder updates so pressed context keeps display/control priority.
-    if (modeContext.allowFreeEncoder) {
+    if (modeContext.allowFreeEncoder && !modeContext.repeatActive) {
       updateVelocityFromEncoder(0);
       updateOctaveFromEncoder(1);
     }
@@ -779,6 +780,16 @@ void appLoopImpl() {
     }
     if (rightPush == PUSHED) {
       updateBaseNoteFromEncoder(1);
+    }
+  }
+  else if (ccOverlayInSpecialMode) {
+    if (leftPush == PUSHED) {
+      updateMidiControlFromEncoder(0);
+      selectCCPreset(0);
+    }
+    if (rightPush == PUSHED) {
+      updateMidiControlFromEncoder(1);
+      selectCCPreset(1);
     }
   }
   else if (modeContext.ultrasonicActive) {
