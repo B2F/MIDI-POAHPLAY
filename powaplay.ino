@@ -356,6 +356,9 @@ byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+byte liveRepeatSpeedDivisor[NB_PUSH] = {4,4,4,4,4,4,4,4};
+byte pendingRepeatSpeedDivisor[NB_PUSH] = {0,0,0,0,0,0,0,0};
+bool pendingRepeatSpeedChange[NB_PUSH] = {false,false,false,false,false,false,false,false};
 // Track last NoteOn per pad so NoteOff always matches, even if octave/scale changes while held.
 byte padActiveNote[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool padNoteIsOn[NB_PUSH] = {false,false,false,false,false,false,false,false};
@@ -604,6 +607,9 @@ void reinit() {
   for (byte i = 0; i < 8; i++) {
     pushRepeatSpeed[i][0] = 1;
     pushRepeatSpeed[i][1] = 4;
+    liveRepeatSpeedDivisor[i] = 4;
+    pendingRepeatSpeedDivisor[i] = 0;
+    pendingRepeatSpeedChange[i] = false;
   }
   for (byte i = 0; i < 8; i++) {
     pushElapsedRepeats[i] = 0;
@@ -1661,6 +1667,13 @@ void playPadsArp() {
   }
 
   for (byte pin = 0; pin < NB_PUSH; pin++) {
+    bool padArpActive = (activeMode == RuntimeMode::Repeat && isPushed[pin] == PUSHED) || repeatIsLocked[pin] == true;
+    if (!padArpActive && pendingRepeatSpeedChange[pin]) {
+      liveRepeatSpeedDivisor[pin] = pendingRepeatSpeedDivisor[pin];
+      pendingRepeatSpeedChange[pin] = false;
+      pendingRepeatSpeedDivisor[pin] = 0;
+    }
+
     if (orderedAnchorPad != UNASSIGNED && (selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN) && pin != orderedAnchorPad) {
       if (!repeatIsLocked[pin] && padNoteIsOn[pin]) {
         sendNote(padActiveNote[pin], 0, false);
@@ -1692,6 +1705,12 @@ void playPadsArp() {
           triggerPadRootNote(pin, currentNote, currentVelocity, true);
           // Create a real gate time for arp notes.
           padScheduledOffMicros[pin] = micros() + getRepeatGateMicros(pin);
+          if (pendingRepeatSpeedChange[pin]) {
+            liveRepeatSpeedDivisor[pin] = pendingRepeatSpeedDivisor[pin];
+            pendingRepeatSpeedChange[pin] = false;
+            pendingRepeatSpeedDivisor[pin] = 0;
+            resetArpState(pin, micros());
+          }
         }
       }
     }
@@ -1699,9 +1718,9 @@ void playPadsArp() {
 }
 
 float getRepeatSpeed(byte pin) {
-  byte currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : repeatSpeedDivisor;
+  byte currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : liveRepeatSpeedDivisor[pin];
   return (float) 4 * ((float) 1 / (float) currentRepeatSpeedDivisor);
-} 
+}
 
 void updateLedsTempo() {
   // Tick-based LED phase (stable):
@@ -1931,16 +1950,25 @@ void updateArpRateFromEncoder(byte selected) {
     changed = true;
   }
   if (changed) {
-    repeatSpeedDivisor = tmpRepeatSpeedDivisor;
-    if (selectedPushPin != -1) {
-      pushRepeatSpeed[selectedPushPin][1] = repeatSpeedDivisor;
+    if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+      pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
+      pendingRepeatSpeedDivisor[selectedPushPin] = tmpRepeatSpeedDivisor;
+      pendingRepeatSpeedChange[selectedPushPin] = true;
+      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
     }
-    for (byte pad = 0; pad < NB_PUSH; pad++) {
-      resetArpState(pad);
+    else {
+      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
+      for (byte pad = 0; pad < NB_PUSH; pad++) {
+        if (pushSettingsLocked[pad]) {
+          continue;
+        }
+        pendingRepeatSpeedDivisor[pad] = tmpRepeatSpeedDivisor;
+        pendingRepeatSpeedChange[pad] = true;
+      }
     }
     display_iface::clear();
     char label[6];
-    snprintf(label, sizeof(label), " 1%u", repeatSpeedDivisor);
+    snprintf(label, sizeof(label), " 1%u", tmpRepeatSpeedDivisor);
     display_iface::print(label);
     display_iface::setColonOn(true);
   }
