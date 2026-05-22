@@ -156,12 +156,12 @@ const byte ULTRASONIC_MASK PROGMEM = B00010000;
 
 byte currentPlayMode = B00000000;
 
-enum class ActiveMode : uint8_t {
-  Standard = 0,
+enum class RuntimeMode : uint8_t {
+  Play = 0,
   Cc,
   Repeat,
   Ultrasonic,
-  Init,
+  Reset,
 };
 
 struct InputState {
@@ -174,20 +174,19 @@ struct InputState {
 };
 
 struct ModeContext {
-  ActiveMode displayMode;
-  bool setupHeld;
-  bool setupOnlyHeld;
+  RuntimeMode activeMode;
   bool anyEncoderPush;
-  bool ccSelected;
-  bool repeatSelected;
-  bool ultrasonicSelected;
+  bool ccActive;
+  bool repeatActive;
+  bool ultrasonicActive;
+  bool resetActive;
   bool allowFreeEncoder;
-  bool allowEncoderPushActions;
-  bool allowSetupEdit;
 };
 
 InputState currentInputState = {false, false, false, false, false, false};
-ActiveMode currentActiveMode = ActiveMode::Standard;
+RuntimeMode selectedMode = RuntimeMode::Play;
+RuntimeMode activeMode = RuntimeMode::Play;
+RuntimeMode previousDisplayedMode = RuntimeMode::Play;
 
 byte switches[4][2] = {
   {SW_CC, CC_MASK},
@@ -195,6 +194,11 @@ byte switches[4][2] = {
   {SW_ULTRASONIC, ULTRASONIC_MASK},
   {SW_REPEAT, REPEAT_MASK}
 };
+byte switchBaselineRaw[4] = {HIGH, HIGH, HIGH, HIGH};
+bool prevCcSwitchOn = false;
+bool prevRepeatSwitchOn = false;
+bool prevUltrasonicSwitchOn = false;
+bool prevPlaySwitchOn = false;
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
@@ -202,60 +206,76 @@ bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 byte rightPush = RELEASED;
 byte leftPush = RELEASED;
-unsigned long initResetHoldStartMs = 0;
-bool initResetLatched = false;
-const unsigned long INIT_RESET_HOLD_MS = 800;
+bool resetModeLatched = false;
 
-ActiveMode resolveActiveMode(const InputState& input) {
-  if (input.ultrasonic) {
-    return ActiveMode::Ultrasonic;
+bool isActiveLevel(byte rawValue, uint8_t activeLevel) {
+  if (activeLevel == INPUT_ACTIVE_LOW) {
+    return rawValue == LOW;
   }
-  if (input.repeat) {
-    return ActiveMode::Repeat;
-  }
-  if (input.cc) {
-    return ActiveMode::Cc;
-  }
-  if (input.init) {
-    return ActiveMode::Init;
-  }
-  return ActiveMode::Standard;
+  return rawValue == HIGH;
 }
 
-bool isModeEnabled(ActiveMode mode) {
-  switch (mode) {
-    case ActiveMode::Cc:
-      return currentInputState.cc;
-    case ActiveMode::Repeat:
-      return currentInputState.repeat;
-    case ActiveMode::Ultrasonic:
-      return currentInputState.ultrasonic;
-    case ActiveMode::Init:
-      return currentInputState.init;
-    case ActiveMode::Standard:
-      return !currentInputState.cc && !currentInputState.repeat &&
-             !currentInputState.ultrasonic && !currentInputState.init;
-  }
-  return false;
+bool isModeSwitchActive(byte rawValue) {
+  return isActiveLevel(rawValue, APP_MODE_SWITCH_ACTIVE_LEVEL);
 }
+
+bool isEncoderPushActive(byte rawValue) {
+  return isActiveLevel(rawValue, APP_ENCODER_PUSH_ACTIVE_LEVEL);
+}
+
+void reinit();
 
 ModeContext deriveModeContext(const InputState& input) {
-  ActiveMode displayMode = resolveActiveMode(input);
+  bool allSwitchesOn = input.cc && input.repeat && input.ultrasonic && input.init;
+  if (allSwitchesOn) {
+    activeMode = RuntimeMode::Reset;
+    if (!resetModeLatched) {
+      reinit();
+      resetModeLatched = true;
+    }
+  }
+  else {
+    if (resetModeLatched) {
+      selectedMode = RuntimeMode::Play;
+      resetModeLatched = false;
+    }
+
+    bool ccRising = input.cc && !prevCcSwitchOn;
+    bool repeatRising = input.repeat && !prevRepeatSwitchOn;
+    bool ultrasonicRising = input.ultrasonic && !prevUltrasonicSwitchOn;
+    bool playRising = input.init && !prevPlaySwitchOn;
+
+    if (ccRising) {
+      selectedMode = RuntimeMode::Cc;
+    }
+    if (repeatRising) {
+      selectedMode = RuntimeMode::Repeat;
+    }
+    if (ultrasonicRising) {
+      selectedMode = RuntimeMode::Ultrasonic;
+    }
+    if (playRising) {
+      selectedMode = RuntimeMode::Play;
+    }
+
+    activeMode = selectedMode;
+  }
+
+  prevCcSwitchOn = input.cc;
+  prevRepeatSwitchOn = input.repeat;
+  prevUltrasonicSwitchOn = input.ultrasonic;
+  prevPlaySwitchOn = input.init;
+
   ModeContext context = {
-    displayMode,
-    input.init,
-    input.init && !input.cc && !input.repeat && !input.ultrasonic,
-    input.leftPush == PUSHED || input.rightPush == PUSHED,
-    displayMode == ActiveMode::Cc,
-    displayMode == ActiveMode::Repeat,
-    displayMode == ActiveMode::Ultrasonic,
-    false,
-    false,
+    activeMode,
+    input.leftPush || input.rightPush,
+    activeMode == RuntimeMode::Cc,
+    activeMode == RuntimeMode::Repeat,
+    activeMode == RuntimeMode::Ultrasonic,
+    activeMode == RuntimeMode::Reset,
     false,
   };
-  context.allowSetupEdit = context.setupOnlyHeld;
-  context.allowFreeEncoder = !context.anyEncoderPush && !context.setupOnlyHeld;
-  context.allowEncoderPushActions = !context.setupOnlyHeld;
+  context.allowFreeEncoder = !context.anyEncoderPush;
   return context;
 }
 
@@ -504,6 +524,32 @@ void printProgmemLabel(const char* const* labels, byte index) {
   display_iface::print(label);
 }
 
+const char* modeLabel(RuntimeMode mode) {
+  switch (mode) {
+    case RuntimeMode::Play:
+      return "PLAY";
+    case RuntimeMode::Cc:
+      return "CC";
+    case RuntimeMode::Repeat:
+      return "REP";
+    case RuntimeMode::Ultrasonic:
+      return "ULT";
+    case RuntimeMode::Reset:
+      return "RES";
+  }
+  return "PLAY";
+}
+
+void showModeIfChanged(RuntimeMode mode) {
+  if (mode == previousDisplayedMode) {
+    return;
+  }
+  previousDisplayedMode = mode;
+  display_iface::clear();
+  display_iface::setColonOn(false);
+  display_iface::print(modeLabel(mode));
+}
+
 void reinit() {
   midiCC[0] = kSelectedMappingProfile.defaultCcLane1;
   midiCC[1] = kSelectedMappingProfile.defaultCcLane2;
@@ -535,8 +581,10 @@ void reinit() {
   encoderSwitch2isActive = false;
   rightPush = RELEASED;
   leftPush = RELEASED;
-  initResetHoldStartMs = 0;
-  initResetLatched = false;
+  selectedMode = RuntimeMode::Play;
+  activeMode = RuntimeMode::Play;
+  previousDisplayedMode = RuntimeMode::Play;
+  resetModeLatched = false;
   repeatSpeedDividend = 1;
   repeatSpeedDivisor = 4;
   globalStartNote = 48;
@@ -631,22 +679,24 @@ void appSetupImpl() {
   quarterNoteTime = micros();
   oneNoteTime = getNoteMicros();
 
+  captureModeSwitchBaseline();
+
   readSwitches();
 
   // LCD:
   display_iface::init(display);
   display_iface::begin();
   display_iface::print("P0AH");
-  delay(500);
-  if (isModeEnabled(ActiveMode::Init)) {
+  delay(1000);
+  if (currentInputState.init) {
     readSwitches();
-    if (isModeEnabled(ActiveMode::Init)) {
+    if (currentInputState.init) {
       display_iface::blink();
       readSwitches();
-      if (isModeEnabled(ActiveMode::Init)) {
+      if (currentInputState.init) {
         display_iface::print("P0AH PLAY");
         readSwitches();
-        if (isModeEnabled(ActiveMode::Init)) {
+        if (currentInputState.init) {
           display_iface::snake(2, 35);
         }
       }
@@ -665,9 +715,12 @@ void appLoopImpl() {
   }
 
   readSwitches();
+  ModeContext modeContext = deriveModeContext(currentInputState);
+  showModeIfChanged(modeContext.activeMode);
+
   // Panic: when SW_PLAY is pressed (mapped to INIT_MASK), send All Notes Off.
   // We detect the rising edge of INIT_MASK.
-  bool initMode = isModeEnabled(ActiveMode::Init);
+  bool initMode = currentInputState.init;
   if (initMode && !prevInitMode) {
     panicAllNotesOff();
   }
@@ -695,29 +748,8 @@ void appLoopImpl() {
     encoderVal[pos] = readEncoder(pos); 
   }
 
-  ModeContext modeContext = deriveModeContext(currentInputState);
-  if (modeContext.setupOnlyHeld && leftPush == PUSHED) {
-    if (initResetHoldStartMs == 0) {
-      initResetHoldStartMs = millis();
-    }
-    if (!initResetLatched && (millis() - initResetHoldStartMs >= INIT_RESET_HOLD_MS)) {
-      displayPrint("init", false, true);
-      reinit();
-      initResetLatched = true;
-    }
-  }
-  else {
-    initResetHoldStartMs = 0;
-    initResetLatched = false;
-  }
-
-  if (modeContext.allowSetupEdit) {
-    updateChannelFromEncoder(0);
-    updateBaseNoteFromEncoder(1);
-  }
-
   // Encoders et faders (sans encoder push)
-  if (modeContext.ccSelected) {
+  if (modeContext.ccActive) {
     updateCCValueFromFader(0);
     updateCCValueFromFader(1);
 
@@ -741,50 +773,54 @@ void appLoopImpl() {
   }
 
   // Encoder push
-  if (!modeContext.allowEncoderPushActions) {
-    // Setup context reserves encoder-push actions for channel/base-note editing.
-  }
-  else if (modeContext.ultrasonicSelected) {
+  if (modeContext.resetActive) {
+    if (leftPush == PUSHED) {
+      updateChannelFromEncoder(0);
+    }
     if (rightPush == PUSHED) {
+      updateBaseNoteFromEncoder(1);
+    }
+  }
+  else if (modeContext.ultrasonicActive) {
+    if (leftPush == PUSHED) {
       updateUltrasonicCC(0);
     }
-    if (leftPush == PUSHED) {
+    if (rightPush == PUSHED) {
       updateUltrasonicDistance(1);
     }
   }
-  else if (modeContext.repeatSelected) {
+  else if (modeContext.repeatActive) {
     if (leftPush == PUSHED) {
-      updateArpRateFromEncoder(1);
-      updatePadsRepeatLockUnlock(true);
-    }
-    if (rightPush == PUSHED) {
       arpSelect(0);
       updatePadsRepeatLockUnlock(false);
     }
+    if (rightPush == PUSHED) {
+      updateArpRateFromEncoder(1);
+      updatePadsRepeatLockUnlock(true);
+    }
   }
-  else if (modeContext.ccSelected) {
+  else if (modeContext.ccActive) {
     if (leftPush == PUSHED) {
-      updateMidiControlFromEncoder(1);
+      updateMidiControlFromEncoder(0);
       selectCCPreset(0);
     }
     if (rightPush == PUSHED) {
-      updateMidiControlFromEncoder(0);
+      updateMidiControlFromEncoder(1);
       selectCCPreset(1);
     }
   }
   else {
-    // chords and scales
-    if (rightPush == PUSHED) {
+    if (leftPush == PUSHED) {
       scaleSelect(0);
       updatePadsLock(true);
     }
-    if (leftPush == PUSHED) {
+    if (rightPush == PUSHED) {
       chordSelect(1);
       updatePadsLock(false);
     }
   }
 
-  if (modeContext.ultrasonicSelected) {
+  if (modeContext.ultrasonicActive) {
     trackUltrasonicChanges();
   }
 }
@@ -1234,7 +1270,7 @@ void resetAllArpStates(unsigned long referenceTime) {
 }
 
 bool isPadArpActive(byte pin) {
-  return repeatIsLocked[pin] == true || (isModeEnabled(ActiveMode::Repeat) && isPushed[pin] == PUSHED);
+  return repeatIsLocked[pin] == true || (activeMode == RuntimeMode::Repeat && isPushed[pin] == PUSHED);
 }
 
 void syncHeldPadsAfterNoteLayoutChange() {
@@ -1576,10 +1612,10 @@ void updatePads() {
       padPressOrder[p] = nextPadPressOrder++;
       resetArpState(p);
 
-      if (!isModeEnabled(ActiveMode::Cc) || (rightPush == RELEASED && leftPush == RELEASED)) {
+      if (activeMode != RuntimeMode::Cc || (rightPush == RELEASED && leftPush == RELEASED)) {
         pushedTime[p] = micros();
         bool shouldPreviewPad =
-          !(isModeEnabled(ActiveMode::Repeat)
+          !(activeMode == RuntimeMode::Repeat
           && (selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN)
           && orderedAnchorBeforePress != UNASSIGNED);
         if (shouldPreviewPad) {
@@ -1624,14 +1660,14 @@ void playPadsArp() {
     }
       if (
         (isPushed[pin] == RELEASED && repeatIsLocked[pin] == false) ||
-        (!isModeEnabled(ActiveMode::Repeat) && repeatIsLocked[pin] == false)
+        (activeMode != RuntimeMode::Repeat && repeatIsLocked[pin] == false)
       ) {
         resetArpState(pin, getNextRepeatMicros(pin));
       }
     unsigned long nextCap = getNextRepeatMicros(pin);
     if (nextCap != 0 && micros() > nextCap) {
       if (
-        (isModeEnabled(ActiveMode::Repeat) && isPushed[pin] == PUSHED) ||
+        (activeMode == RuntimeMode::Repeat && isPushed[pin] == PUSHED) ||
         repeatIsLocked[pin] == true
       ) {
         pushElapsedRepeats[pin]++;
@@ -1724,14 +1760,32 @@ void MidiSync() {
   midiCLockTick++;
 }
 
+byte readMuxDigitalStable(byte channel) {
+  mux.channel(channel);
+  delayMicroseconds(3);
+  return io_iface::readDigital(MUXSIG);
+}
+
+void captureModeSwitchBaseline() {
+  for (byte position = 0; position < 4; position++) {
+    byte sw = switches[position][0];
+    switchBaselineRaw[position] = readMuxDigitalStable(sw);
+  }
+}
+
 void readSwitches() {
 
   currentInputState = {false, false, false, false, false, false};
   for (byte position = 0; position < 4; position++) {
     byte sw = switches[position][0];
     byte mask = switches[position][1];
-    mux.channel(sw);
-    if (io_iface::readDigital(MUXSIG) == true) {
+    byte switchRaw = readMuxDigitalStable(sw);
+#if APP_MODE_SWITCH_USE_BASELINE
+    bool modeActive = (switchRaw != switchBaselineRaw[position]);
+#else
+    bool modeActive = isModeSwitchActive(switchRaw);
+#endif
+    if (modeActive) {
       if (mask == CC_MASK) {
         currentInputState.cc = true;
       }
@@ -1747,14 +1801,11 @@ void readSwitches() {
     }
   }
 
-  mux.channel(P1SW);
-  currentInputState.leftPush = io_iface::readDigital(MUXSIG);
-  leftPush = currentInputState.leftPush;
-  mux.channel(P2SW);
-  currentInputState.rightPush = io_iface::readDigital(MUXSIG);
-  rightPush = currentInputState.rightPush;
+  currentInputState.leftPush = isEncoderPushActive(readMuxDigitalStable(P1SW));
+  leftPush = currentInputState.leftPush ? PUSHED : RELEASED;
+  currentInputState.rightPush = isEncoderPushActive(readMuxDigitalStable(P2SW));
+  rightPush = currentInputState.rightPush ? PUSHED : RELEASED;
 
-  currentActiveMode = resolveActiveMode(currentInputState);
   currentPlayMode = B00000000;
   if (currentInputState.cc) {
     currentPlayMode |= CC_MASK;

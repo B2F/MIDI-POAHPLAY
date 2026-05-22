@@ -19,6 +19,10 @@
 #define MIDI_TRANSPORT_SERIAL 1
 #define MIDI_TRANSPORT_USB 2
 
+// Input polarity selectors
+#define INPUT_ACTIVE_LOW 0
+#define INPUT_ACTIVE_HIGH 1
+
 // Load local overrides first (if present).
 #if __has_include("build_config.local.h")
 #include "build_config.local.h"
@@ -40,6 +44,22 @@
 
 #ifndef APP_MIDI_TRANSPORT
 #define APP_MIDI_TRANSPORT MIDI_TRANSPORT_SERIAL
+#endif
+
+// Mode switches are mux channels SW_CC/SW_REPEAT/SW_ULTRASONIC/SW_PLAY.
+#ifndef APP_MODE_SWITCH_ACTIVE_LEVEL
+#define APP_MODE_SWITCH_ACTIVE_LEVEL INPUT_ACTIVE_HIGH
+#endif
+
+// Encoder pushes are mux channels encoder1Sw/encoder2Sw.
+#ifndef APP_ENCODER_PUSH_ACTIVE_LEVEL
+#define APP_ENCODER_PUSH_ACTIVE_LEVEL INPUT_ACTIVE_LOW
+#endif
+
+// Auto-detect mode switch active state by comparing against boot-time baseline.
+// Set to 0 to use APP_MODE_SWITCH_ACTIVE_LEVEL directly.
+#ifndef APP_MODE_SWITCH_USE_BASELINE
+#define APP_MODE_SWITCH_USE_BASELINE 1
 #endif
 
 #endif

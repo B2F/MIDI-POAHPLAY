@@ -9,6 +9,71 @@ DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Se
 
 ![MIDI P0AH PLAY](images/1776264780911.jpg)
 
+## 🕹 Operating Modes
+
+Mode selection is event-driven:
+
+* `SW_CC` ON edge selects `CC` mode.
+* `SW_REPEAT` ON edge selects `REP` mode.
+* `SW_ULTRASONIC` ON edge selects `ULT` mode.
+* `SW_PLAY` ON edge selects `PLAY` mode.
+* If all four switches are ON together, `RES` mode is entered and `reinit()` is triggered once on entry.
+* Releasing switches does not change the selected non-reset mode; the latest ON edge wins when overlaps occur.
+
+Right after activation, display shows one of: `PLAY`, `CC`, `REP`, `ULT`, `RES`.
+
+Quick controls overview:
+
+| Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `PLAY` | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
+| `CC` | CC lane 1 value | CC lane 2 value | CC lane 1 value (no push) | CC lane 2 value (no push) | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
+| `REP` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | Arp type select + repeat unlock workflow | Arp speed/divisor edit + repeat lock workflow |
+| `ULT` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | Ultrasonic target CC select | Ultrasonic max distance edit |
+| `RES` | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | unchanged (PLAY) | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+
+Per-mode behavior:
+
+* **PLAY Mode:**
+  * Fader 1 = Velocity, Fader 2 = Octave.
+  * Encoder 1 = Velocity, Encoder 2 = Octave.
+  * Left encoder push: scale select.
+  * Right encoder push: chord select.
+  * Chord and scale selectors wrap around.
+  * Pad settings lock/unlock available via encoder-push + pad workflows (`pushSettingsLocked`).
+
+* **CC Mode (`SW_CC`)**
+  * Faders edit CC values for lanes 1 and 2.
+  * With **no encoder push held**, encoder 1 and encoder 2 edit the CC values for lanes 1 and 2.
+  * Hold **Left encoder push** (`P1SW`) for lane 1 CC selection/pad presets.
+  * Hold **Right encoder push** (`P2SW`) for lane 2 CC selection/pad presets.
+  * Preset CC labels are displayed as `C091..C100`.
+
+* **REP Mode (`SW_REPEAT`)**
+  * Left encoder push: arp type select.
+  * Right encoder push: arp rate / divisor edit.
+  * Arp selector wraps around.
+  * Pad repeat lock/unlock workflows are available in arp context (`repeatIsLocked`).
+
+* **Ultrasonic Mode (`SW_ULTRASONIC`)**
+  * Hold **Left encoder push** to set ultrasonic target CC number.
+  * Hold **Right encoder push** to set max ultrasonic distance range.
+  * Sensor sends continuous CC based on measured distance.
+
+* **RES Mode (all 4 mode switches ON)**
+  * `reinit()` runs once on RES entry.
+  * Left encoder push: MIDI channel (`CHx`).
+  * Right encoder push: base note / transpose reference.
+  * On RES exit, active mode returns to `PLAY`.
+
+* **DRUM scale note path**
+  * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
+  * In DRUM scale, this direct map is used for playback instead of the generic scale-step transpose path.
+
+* **Locking semantics note**
+  * Play-mode pad settings lock (`pushSettingsLocked`) and Repeat-mode repeat lock (`repeatIsLocked`) are separate mechanisms.
+
+
 ## ✅ Current Firmware Feature Set
 
 ### Musical Engine
@@ -198,46 +263,6 @@ If local mapping is selected and missing, compilation fails with an explicit err
 If `APP_WIRING_PROFILE_HEADER` points to a missing header, compilation fails with an explicit include error.
 
 ---
-
-## 🕹 Operating Modes
-
-Toggle the physical Mode Switches to change functionality:
-
-* **Standard Mode:**
-  * Fader 1 = Velocity, Fader 2 = Octave.
-  * Encoder 1 = Velocity, Encoder 2 = Octave.
-  * Right encoder push: scale select.
-  * Left encoder push: chord select.
-  * Chord and scale selectors wrap around.
-  * Pad lock/unlock available via encoder-push + pad workflows.
-
-* **CC Mode (`SW_CC`)**
-  * Faders edit CC values for lanes 1 and 2.
-  * With **no encoder push held**, encoder 1 and encoder 2 edit the CC values for lanes 1 and 2.
-  * Hold **Left encoder push** (`P1SW`) to edit/select **CC lane 2 number** with encoder 2 and select pad-based CC presets for lane 1.
-  * Hold **Right encoder push** (`P2SW`) to edit/select **CC lane 1 number** with encoder 1 and select pad-based CC presets for lane 2.
-  * Preset CC labels are displayed as `C091..C100`.
-
-* **Arp Mode (`SW_REPEAT`)**
-  * Left encoder push: arp rate / divisor edit.
-  * Right encoder push: arp type select.
-  * Arp selector wraps around.
-  * Pad arp lock/unlock workflows are available in arp context.
-
-* **Ultrasonic Mode (`SW_ULTRASONIC`)**
-  * Hold **Right encoder push** to set ultrasonic target CC number.
-  * Left encoder push + turn encoder 1: set max ultrasonic distance range.
-  * Sensor sends continuous CC based on measured distance.
-
-* **DRUM scale note path**
-  * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
-  * In DRUM scale, this direct map is used for playback instead of the generic scale-step transpose path.
-
-* **Init / Setup Mode (`SW_PLAY` logic)**
-  * Encoder 1: MIDI channel (`CHx`).
-  * Encoder 2: base note / transpose reference (note name shown).
-  * Left encoder push on init entry can trigger `reinit()` (factory-style reset of runtime settings).
-
 
 ---
 
