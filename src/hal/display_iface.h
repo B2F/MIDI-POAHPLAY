@@ -18,9 +18,11 @@ namespace display_iface {
   inline void begin() { get().begin(); }
   inline void clear() { get().clear(); }
   inline void setColonOn(bool on) { get().setColonOn(on); }
+  inline void setPrintDelay(uint16_t delayMs) { get().setPrintDelay(delayMs); }
   inline void print(const String& text) { get().print(text); }
   inline void print(const char* text) { get().print(text); }
   inline void print(char text) { get().print(text); }
+  inline void scrollingText(const char* text, uint8_t repeats) { get().scrollingText(text, repeats); }
   inline void blink() { get().blink(); }
   inline void snake(uint8_t loops, uint16_t delayMs) { get().snake(loops, delayMs); }
 

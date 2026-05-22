@@ -187,6 +187,7 @@ InputState currentInputState = {false, false, false, false, false, false};
 RuntimeMode selectedMode = RuntimeMode::Play;
 RuntimeMode activeMode = RuntimeMode::Play;
 RuntimeMode previousDisplayedMode = RuntimeMode::Play;
+bool forceModeLabelDisplay = false;
 
 byte switches[4][2] = {
   {SW_CC, CC_MASK},
@@ -247,15 +248,19 @@ ModeContext deriveModeContext(const InputState& input) {
 
     if (ccRising) {
       selectedMode = RuntimeMode::Cc;
+      forceModeLabelDisplay = true;
     }
     if (repeatRising) {
       selectedMode = RuntimeMode::Repeat;
+      forceModeLabelDisplay = true;
     }
     if (ultrasonicRising) {
       selectedMode = RuntimeMode::Ultrasonic;
+      forceModeLabelDisplay = true;
     }
     if (playRising) {
       selectedMode = RuntimeMode::Play;
+      forceModeLabelDisplay = true;
     }
 
     activeMode = selectedMode;
@@ -527,27 +532,28 @@ void printProgmemLabel(const char* const* labels, byte index) {
 const char* modeLabel(RuntimeMode mode) {
   switch (mode) {
     case RuntimeMode::Play:
-      return "PLAY";
+      return "PLAy";
     case RuntimeMode::Cc:
       return "CC";
     case RuntimeMode::Repeat:
-      return "REP";
+      return "rEPEAt";
     case RuntimeMode::Ultrasonic:
-      return "ULT";
+      return "UltrA";
     case RuntimeMode::Reset:
-      return "RES";
+      return "rESEt";
   }
-  return "PLAY";
+  return "PLAy";
 }
 
 void showModeIfChanged(RuntimeMode mode) {
-  if (mode == previousDisplayedMode) {
+  if (mode == previousDisplayedMode && !forceModeLabelDisplay) {
     return;
   }
+  forceModeLabelDisplay = false;
   previousDisplayedMode = mode;
   display_iface::clear();
   display_iface::setColonOn(false);
-  display_iface::print(modeLabel(mode));
+  display_iface::scrollingText(modeLabel(mode), 1);
 }
 
 void reinit() {
@@ -679,6 +685,9 @@ void appSetupImpl() {
   quarterNoteTime = micros();
   oneNoteTime = getNoteMicros();
 
+  byte bootPlayRaw = readMuxDigitalStable(SW_PLAY);
+  bool bootPlaySwitchOn = isModeSwitchActive(bootPlayRaw);
+
   captureModeSwitchBaseline();
 
   readSwitches();
@@ -686,27 +695,18 @@ void appSetupImpl() {
   // LCD:
   display_iface::init(display);
   display_iface::begin();
-  display_iface::print("P0AH");
-  delay(1000);
-  if (currentInputState.init) {
-    readSwitches();
-    if (currentInputState.init) {
-      display_iface::blink();
-      readSwitches();
-      if (currentInputState.init) {
-        display_iface::print("P0AH PLAY");
-        readSwitches();
-        if (currentInputState.init) {
-          display_iface::snake(2, 35);
-        }
-      }
-    }
+  display_iface::setPrintDelay(120);
+  if (bootPlaySwitchOn) {
+    display_iface::scrollingText("P0AH PLAY", 1);
+  }
+  else {
+    display_iface::print("P0AH PLAY");
+    display_iface::blink();
+    display_iface::snake(2, 70);
   }
 }
 
 void appLoopImpl() {
-
-  unsigned long loopTime = micros();
 
   updateMidiSerial();
   processScheduledNoteOffs();
