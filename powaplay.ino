@@ -679,6 +679,7 @@ void appSetupImpl() {
 
   // Magnet:
   io_iface::setPinMode(MAGNET, OUTPUT);
+  io_iface::writeDigital(MAGNET, HIGH);
 
   // mux sig:
   io_iface::setPinMode(MUXSIG, INPUT_PULLUP);
@@ -733,6 +734,7 @@ void appLoopImpl() {
   }
   prevInitMode = initMode;
   updatePads();
+  io_iface::writeDigital(MAGNET, aPadIsPushed() ? LOW : HIGH);
 
   // Update LEDs AFTER pad/switch scan so they always reflect current pad state.
   if (playFlag) {
@@ -2211,11 +2213,9 @@ void sendNote(byte note, byte velocity, bool on) {
 
   if (on) {
     io_iface::writeDigital(LED_BUILTIN, HIGH);
-    io_iface::writeDigital(MAGNET, HIGH);
   }
   else {
     io_iface::writeDigital(LED_BUILTIN, LOW);
-    io_iface::writeDigital(MAGNET, LOW);
   }
 }
 
