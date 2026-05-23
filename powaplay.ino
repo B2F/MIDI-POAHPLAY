@@ -199,7 +199,7 @@ bool prevCcSwitchOn = false;
 bool prevRepeatSwitchOn = false;
 bool prevUltrasonicSwitchOn = false;
 bool prevPlaySwitchOn = false;
-bool prevAllModeSwitchesOn = false;
+bool prevResetSwitchThresholdReached = false;
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
@@ -226,15 +226,29 @@ bool isEncoderPushActive(byte rawValue) {
 void reinit();
 
 ModeContext deriveModeContext(const InputState& input) {
-  bool allSwitchesOn = input.cc && input.repeat && input.ultrasonic && input.init;
-  bool allSwitchesOnRising = allSwitchesOn && !prevAllModeSwitchesOn;
+  uint8_t activeSwitchCount = 0;
+  if (input.cc) {
+    activeSwitchCount++;
+  }
+  if (input.repeat) {
+    activeSwitchCount++;
+  }
+  if (input.ultrasonic) {
+    activeSwitchCount++;
+  }
+  if (input.init) {
+    activeSwitchCount++;
+  }
+
+  bool resetSwitchThresholdReached = activeSwitchCount >= APP_RESET_ACTIVE_SWITCH_COUNT;
+  bool resetSwitchThresholdRising = resetSwitchThresholdReached && !prevResetSwitchThresholdReached;
 
   bool ccRising = input.cc && !prevCcSwitchOn;
   bool repeatRising = input.repeat && !prevRepeatSwitchOn;
   bool ultrasonicRising = input.ultrasonic && !prevUltrasonicSwitchOn;
   bool playRising = input.init && !prevPlaySwitchOn;
 
-  if (allSwitchesOnRising) {
+  if (resetSwitchThresholdRising) {
     panicAllNotesOff();
     reinit();
     selectedMode = RuntimeMode::Reset;
@@ -287,7 +301,7 @@ ModeContext deriveModeContext(const InputState& input) {
   prevRepeatSwitchOn = input.repeat;
   prevUltrasonicSwitchOn = input.ultrasonic;
   prevPlaySwitchOn = input.init;
-  prevAllModeSwitchesOn = allSwitchesOn;
+  prevResetSwitchThresholdReached = resetSwitchThresholdReached;
 
   ModeContext context = {
     activeMode,
@@ -716,7 +730,7 @@ void appSetupImpl() {
   display_iface::begin();
   display_iface::setPrintDelay(120);
   if (bootPlaySwitchOn) {
-    display_iface::scrollingText("P0AH PLAY", 1);
+    display_iface::scrollingText("P0AH", 1);
   }
   else {
     display_iface::print("P0AH PLAY");

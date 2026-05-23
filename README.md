@@ -21,7 +21,7 @@ Quick controls overview:
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
 | `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
 | `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
-| `RESET` (all four switches) | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+| `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
 
 Mode selection behavior:
 
@@ -30,7 +30,7 @@ Mode selection behavior:
 * `SW_REPEAT` ON edge selects `REPEAT` mode.
 * `SW_ULTRASONIC` ON edge selects `ULTRASONIC` mode.
 * `SW_PLAY` ON edge selects `PLAY` mode.
-* `RESET` triggers on the rising edge where all 4 mode switches are ON together (the last switch turned ON).
+* `RESET` triggers on the rising edge where the active mode-switch count reaches `APP_RESET_ACTIVE_SWITCH_COUNT`.
 * After RESET trigger, mode stays in `RESET` until a new mode-select ON edge occurs (`SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, or `SW_PLAY`).
 * For non-RESET mode selection, latest ON edge wins.
 
@@ -67,8 +67,8 @@ Per-mode behavior:
   * Hold **Right encoder push** to set max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
-* **RESET Mode (all 4 mode switches ON edge)**
-  * `reinit()` runs once when the last of the 4 mode switches is turned ON.
+* **RESET Mode (mode-switch threshold ON edge)**
+  * `reinit()` runs once when active mode switches reach the configured threshold.
   * Left encoder push: MIDI channel (`CHx`).
   * Right encoder push: base note / transpose reference.
   * RESET stays active until a new mode ON edge is received (`CC`, `REPEAT`, `ULTRASONIC`, or `PLAY`).
@@ -214,6 +214,7 @@ Set profile selectors in `platformio.ini` via `build_flags`.
 * `APP_WIRING_PROFILE_HEADER="wirings/nano_default.h"`
 * `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
 * `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
+* `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
 `promicro16` uses a Pro Micro clone-safe wiring baseline:
 
@@ -221,6 +222,7 @@ Set profile selectors in `platformio.ini` via `build_flags`.
 * `APP_WIRING_PROFILE_HEADER="wirings/pro_micro_clone_safe.h"`
 * `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
 * `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
+* `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
 ### Local custom profiles (not versioned)
 
@@ -250,6 +252,7 @@ Minimal example (`src/config/build_config.local.h`):
 #define APP_WIRING_PROFILE_HEADER "local/local_profiles.h"
 #define APP_MAPPING_PROFILE MAPPING_LOCAL
 #define APP_MIDI_TRANSPORT MIDI_TRANSPORT_SERIAL
+#define APP_RESET_ACTIVE_SWITCH_COUNT 4
 
 #endif
 ```
