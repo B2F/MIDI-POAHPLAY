@@ -679,14 +679,18 @@ void loop() { appLoopImpl(); }
 
 void appSetupImpl() {
 
+#if APP_MIDI_TRANSPORT == MIDI_TRANSPORT_SERIAL
   Serial.begin(BAUD_RATE);
+#endif
   app_midi::begin();
 
-  Serial.print("bnobs.art P0AH PLAY --- Compiled on ");
+#if APP_MIDI_TRANSPORT == MIDI_TRANSPORT_SERIAL
+  Serial.print("MIDI P0AH PLAY (Serial MIDI debug) --- Compiled on ");
   Serial.print(__DATE__);
   Serial.print(" at ");
   Serial.println(__TIME__);
   Serial.println();
+#endif
 
   // Push
   for (byte pad = 0; pad < NB_PUSH; pad++) {
@@ -861,6 +865,8 @@ void appLoopImpl() {
   if (modeContext.ultrasonicActive) {
     trackUltrasonicChanges();
   }
+
+  app_midi::flush();
 }
 
 // Pads -> LEDs mapping (columns):
@@ -1002,56 +1008,47 @@ void updateOctaveFromEncoder(byte selected) {
 }
 
 void updateMidiSerial() {
+  uint8_t midiMessage = 0;
+  while (app_midi::readRealtime(midiMessage)) {
+    unsigned long loopTime = micros();
 
-  if (!Serial.available()){
-    return;
-  }
-
-  unsigned long loopTime = micros();
-
-  byte serialByte = Serial.read();
-
-  if (serialByte == MIDI_CONTINUE) {
-    playFlag = true;
-    startTime += micros() - stopTime;
-    displayPrint("CONT", false, true);
-  }
-  if (serialByte == MIDI_START) {
-    playFlag = true;
-    startTime = loopTime - MIDI_START_OFFSET;
-    nbElapsedNotes = 0;
-    // Re-align beat phase on transport start.
-    midiCLockTick = 0;
-    resetAllArpStates(loopTime);
-    displayPrint("PLAY", false, true);
-  }
-  if (serialByte == MIDI_STOP) {
-    playFlag = false;
-    stopTime = micros();
-    displayPrint("STOP", false, true);
-  }
-  if (serialByte == MIDI_SONG_POSITION_POINTER) {
-    // @todo.
-    displayPrint("POS", false, true);
-    // serialByte = Serial.read();
-    // byte serialByte2 = Serial.read();
-    // delay(1000);
-    // display.clear();
-    // display.println((int) serialByte);
-    // delay(2000);
-  }
-  if (serialByte == MIDI_CLOCK && playFlag) {
-
-    MidiSync();
-
-    if (loopTime > getNextNoteMicros()) {
-      nbElapsedNotes++;
+    if (midiMessage == MIDI_CONTINUE) {
+      playFlag = true;
+      startTime += micros() - stopTime;
+      displayPrint("CONT", false, true);
+      continue;
     }
+    if (midiMessage == MIDI_START) {
+      playFlag = true;
+      startTime = loopTime - MIDI_START_OFFSET;
+      nbElapsedNotes = 0;
+      // Re-align beat phase on transport start.
+      midiCLockTick = 0;
+      resetAllArpStates(loopTime);
+      displayPrint("PLAY", false, true);
+      continue;
+    }
+    if (midiMessage == MIDI_STOP) {
+      playFlag = false;
+      stopTime = micros();
+      displayPrint("STOP", false, true);
+      continue;
+    }
+    if (midiMessage == MIDI_SONG_POSITION_POINTER) {
+      // @todo.
+      displayPrint("POS", false, true);
+      continue;
+    }
+    if (midiMessage == MIDI_CLOCK && playFlag) {
+      MidiSync();
 
-    playPadsArp();
+      if (loopTime > getNextNoteMicros()) {
+        nbElapsedNotes++;
+      }
+
+      playPadsArp();
+    }
   }
-
-  return;
 }
 
 void writeLeds(byte s1, byte s2, byte s3, byte s4) {

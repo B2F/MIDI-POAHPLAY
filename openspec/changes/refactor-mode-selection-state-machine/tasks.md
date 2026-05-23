@@ -18,4 +18,4 @@
 - [x] 3.1 Add mode transition detection and display mode labels (`REP`, `CC`, `PLAY`, `ULT`, `RES`) on activation edges.
 - [x] 3.2 Verify reset display and behavior consistency with one-shot reset-on-entry semantics.
 - [x] 3.3 Run firmware build for target environment and resolve any compilation issues introduced by the refactor.
-- [ ] 3.4 Perform hardware behavior validation for default and remapped wiring profiles, covering mode selection, overlap, release semantics, and control mappings.
+- [x] 3.4 Perform hardware behavior validation for default and remapped wiring profiles, covering mode selection, overlap, release semantics, and control mappings.

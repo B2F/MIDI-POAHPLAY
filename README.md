@@ -216,12 +216,12 @@ Set profile selectors in `platformio.ini` via `build_flags`.
 * `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
 * `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
-`promicro16` uses a Pro Micro clone-safe wiring baseline:
+`promicro16` uses a Pro Micro clone-safe wiring baseline with native USB MIDI:
 
 * `APP_BOARD_PROFILE=BOARD_PRO_MICRO`
 * `APP_WIRING_PROFILE_HEADER="wirings/pro_micro_clone_safe.h"`
 * `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
-* `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
+* `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_USB`
 * `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
 ### Local custom profiles (not versioned)
@@ -278,20 +278,33 @@ If `APP_WIRING_PROFILE_HEADER` points to a missing header, compilation fails wit
 
 ## 💻 Software Setup & MIDI Routing
 
-Since this device communicates over a standard Serial port (not Native USB MIDI), you must bridge the signal on your computer.
+Transport depends on the selected firmware environment.
 
-### The Windows Workflow (loopMIDI + Hairless)
-On Windows, MIDI software cannot "see" Serial data directly. You need two tools:
-1.  **[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html):** Create a virtual MIDI port (e.g., call it "P0Ah Port").
-2.  **[Hairless MIDI <-> Serial Bridge](https://projectgus.github.io/hairless-midiserial/):**
-    *   Set **Serial Port** to your Arduino's COM port.
-    *   Set **MIDI Out** to your loopMIDI virtual port.
-    *   Set **MIDI In** to your loopMIDI virtual port (for clock sync).
-    *   Go to `Preferences` and set the **Baud Rate to 38400**.
-3.  **In your DAW:** Select the virtual (LoopMidi) Port as your MIDI Input and Output (to send clock).
+### Pro Micro (`promicro16`): Native USB MIDI (no bridge)
 
-### Alternative bridge solution
-For modern WSL compatible serial MIDI bridge, use: **[SerialMidi-WMS](https://github.com/B2F/SerialMidi-WMS)**
+`promicro16` defaults to `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_USB`.
+
+1. Build/upload the Pro Micro environment.
+2. Connect over USB.
+3. In your DAW, select the Pro Micro MIDI input/output device directly.
+4. Send DAW clock/transport to that device if you want synced arp behavior.
+
+No Hairless or loopMIDI is required for this path.
+
+### Nano (`nanoatmega328`): Serial MIDI bridge workflow
+
+`nanoatmega328` defaults to `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`.
+
+On Windows, MIDI software cannot see Serial data directly. Use:
+1. **[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html):** create a virtual MIDI port (for example `P0Ah Port`).
+2. **[Hairless MIDI <-> Serial Bridge](https://projectgus.github.io/hairless-midiserial/):**
+   * Set **Serial Port** to your board COM port.
+   * Set **MIDI Out** to your loopMIDI virtual port.
+   * Set **MIDI In** to your loopMIDI virtual port (for clock sync).
+   * Set **Baud Rate** to `38400` in Hairless preferences.
+3. In your DAW, use the loopMIDI virtual port for MIDI input/output.
+
+Alternative serial bridge: **[SerialMidi-WMS](https://github.com/B2F/SerialMidi-WMS)**
 
 ### Firmware Flashing (PlatformIO)
 Use PlatformIO CLI from the repository root:
@@ -302,14 +315,15 @@ Use PlatformIO CLI from the repository root:
    * `python -m platformio run -e nanoatmega328`
 3. Upload firmware (Nano baseline):
    * `python -m platformio run -e nanoatmega328 -t upload --upload-port <PORT>`
-4. Build alternate tracked profile (Pro Micro clone-safe):
-   * `python -m platformio run -e promicro16`
-5. Open serial monitor (firmware baud rate):
-   * `python -m platformio device monitor -p <PORT> -b 38400`
+4. Build Pro Micro profile (native USB MIDI):
+    * `python -m platformio run -e promicro16`
+5. Open serial monitor (serial transport/debug use):
+    * `python -m platformio device monitor -p <PORT> -b 38400`
 
 Notes:
 * `-t upload` compiles automatically before uploading.
 * Replace `<PORT>` with your serial port (for example `COM3` on Windows or `/dev/ttyUSB0` on Linux).
+* Native USB MIDI devices do not appear in `platformio device monitor`; verify them in your DAW MIDI device list.
 * If needed, list available ports with `python -m platformio device list`.
 * If upload fails because the port is busy, close serial monitor/bridge apps and retry.
 

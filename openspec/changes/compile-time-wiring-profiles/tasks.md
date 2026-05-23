@@ -30,17 +30,17 @@
 
 ## 5. Validation and Documentation
 
-- [ ] 5.1 Add dual-target compile checks for Nano and Pro Micro profiles.
+- [x] 5.1 Add dual-target compile checks for Nano and Pro Micro profiles.
 - [ ] 5.2 Run hardware probe verification for divergent pins and document expected profile constraints.
 - [x] 5.3 Update README/developer docs with profile selection, mapping plugin workflow, and troubleshooting for alias mismatches.
 
 ## 6. Manual Verification Checklist (Use After Each Upload)
 
-- [ ] 6.1 Boot and transport sanity: device boots cleanly, serial monitor is stable at `38400`, DAW/bridge receives MIDI traffic.
-- [ ] 6.2 Standard mode parity: pads trigger expected notes, velocity and octave controls respond, scale/chord selectors wrap as before.
-- [ ] 6.3 CC mode parity: lane values update from encoders/faders, lane selection via encoder push matches prior behavior, preset CC labels/selection remain correct.
-- [ ] 6.4 Arp mode parity: arp type/rate edits work, repeat lock workflows behave consistently, internal timing remains stable.
+- [x] 6.1 Boot and transport sanity: device boots cleanly, serial monitor is stable at `38400`, DAW/bridge receives MIDI traffic.
+- [x] 6.2 Standard mode parity: pads trigger expected notes, velocity and octave controls respond, scale/chord selectors wrap as before.
+- [x] 6.3 CC mode parity: lane values update from encoders/faders, lane selection via encoder push matches prior behavior, preset CC labels/selection remain correct.
+- [x] 6.4 Arp mode parity: arp type/rate edits work, repeat lock workflows behave consistently, internal timing remains stable.
 - [ ] 6.5 Clock sync parity: incoming MIDI clock start/stop/continue drives arp timing as before when transport sync is enabled.
-- [ ] 6.6 Ultrasonic parity: target CC selection works, distance-to-CC smoothing/deadband behavior is stable, update cadence remains usable.
-- [ ] 6.7 Init/reset parity: setup mode parameter edits work, reinit workflow remains functional.
+- [x] 6.6 Ultrasonic parity: target CC selection works, distance-to-CC smoothing/deadband behavior is stable, update cadence remains usable.
+- [x] 6.7 Init/reset parity: setup mode parameter edits work, reinit workflow remains functional.
 - [ ] 6.8 Regression log: for each upload, record profile selected, build command, observed differences, and pass/fail status.
