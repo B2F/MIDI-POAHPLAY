@@ -1650,10 +1650,11 @@ void updatePads() {
       if (activeMode != RuntimeMode::Cc || (rightPush == RELEASED && leftPush == RELEASED)) {
         pushedTime[p] = micros();
         bool shouldPreviewPad =
-          !(activeMode == RuntimeMode::Repeat
-          && (selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN)
+          activeMode != RuntimeMode::Repeat
+          && !((selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN)
           && orderedAnchorBeforePress != UNASSIGNED);
-        if (shouldPreviewPad) {
+        bool padArpActive = isPadArpActive(p);
+        if (shouldPreviewPad && !padArpActive) {
           playPush(p, 1);
         }
         if (leftPush == RELEASED && rightPush == RELEASED) {
@@ -1703,12 +1704,16 @@ void playPadsArp() {
       }
       continue;
     }
+    if (!padArpActive) {
+      padScheduledOffMicros[pin] = 0;
       if (
         (isPushed[pin] == RELEASED && repeatIsLocked[pin] == false) ||
         (activeMode != RuntimeMode::Repeat && repeatIsLocked[pin] == false)
       ) {
         resetArpState(pin, getNextRepeatMicros(pin));
       }
+      continue;
+    }
     unsigned long nextCap = getNextRepeatMicros(pin);
     if (nextCap != 0 && micros() > nextCap) {
       if (
