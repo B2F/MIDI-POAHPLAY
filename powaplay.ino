@@ -187,6 +187,13 @@ RuntimeMode selectedMode = RuntimeMode::Play;
 RuntimeMode activeMode = RuntimeMode::Play;
 RuntimeMode previousDisplayedMode = RuntimeMode::Play;
 bool forceModeLabelDisplay = false;
+bool modeScrollPending = false;
+RuntimeMode modeScrollMode = RuntimeMode::Play;
+unsigned long modeScrollPendingStartMs = 0;
+display_iface::NonBlockingScrollState modeScrollState;
+uint32_t modeScrollBaselineMutation = 0;
+const unsigned long MODE_SCROLL_DELAY_MS = 0;
+const unsigned long MODE_SCROLL_STEP_MS = 120;
 
 struct ModeSwitchRef {
   SignalRef signal;
@@ -640,15 +647,54 @@ const char* modeLabel(RuntimeMode mode) {
   return "PLAy";
 }
 
-void showModeIfChanged(RuntimeMode mode) {
+void showModeIfChanged(RuntimeMode mode, bool suppressDisplay) {
   if (mode == previousDisplayedMode && !forceModeLabelDisplay) {
     return;
   }
-  forceModeLabelDisplay = false;
+
   previousDisplayedMode = mode;
-  display_iface::clear();
-  display_iface::setColonOn(false);
-  display_iface::scrollingText(modeLabel(mode), 1);
+  if (suppressDisplay) {
+    forceModeLabelDisplay = false;
+    modeScrollPending = false;
+    display_iface::cancelScroll(modeScrollState);
+    return;
+  }
+
+  forceModeLabelDisplay = false;
+  modeScrollMode = mode;
+  modeScrollPending = true;
+  modeScrollPendingStartMs = millis();
+  modeScrollBaselineMutation = display_iface::getMutationCounter();
+  display_iface::cancelScroll(modeScrollState);
+}
+
+void tickModeScroll(bool interactionActive) {
+  if (!modeScrollPending && !modeScrollState.active) {
+    return;
+  }
+
+  if (interactionActive) {
+    modeScrollPending = false;
+    display_iface::cancelScroll(modeScrollState);
+    return;
+  }
+
+  if (display_iface::getMutationCounter() != modeScrollBaselineMutation) {
+    modeScrollPending = false;
+    display_iface::cancelScroll(modeScrollState);
+    return;
+  }
+
+  if (modeScrollPending) {
+    unsigned long elapsed = millis() - modeScrollPendingStartMs;
+    if (elapsed < MODE_SCROLL_DELAY_MS) {
+      return;
+    }
+    modeScrollPending = false;
+    display_iface::startScroll(modeScrollState, modeLabel(modeScrollMode), MODE_SCROLL_STEP_MS);
+    modeScrollBaselineMutation = display_iface::getMutationCounter();
+  }
+  display_iface::tickScroll(modeScrollState);
 }
 
 void reinit() {
@@ -799,7 +845,6 @@ void appSetupImpl() {
   // LCD:
   display_iface::init(display);
   display_iface::begin();
-  display_iface::setPrintDelay(120);
   if (bootPlaySwitchOn) {
     display_iface::scrollingText("P0AH", 1);
   }
@@ -821,7 +866,6 @@ void appLoopImpl() {
   readSwitches();
   ModeContext modeContext = deriveModeContext(currentInputState);
   bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
-  showModeIfChanged(modeContext.activeMode);
 
   updatePads();
   io_iface::writeDigital(MAGNET, aPadIsPushed() ? LOW : HIGH);
@@ -846,6 +890,17 @@ void appLoopImpl() {
   for (byte pos = 0; pos < NB_ENCODERS; pos++) {
     encoderVal[pos] = readEncoder(pos); 
   }
+
+  bool interactionActive = modeContext.anyEncoderPush || aPadIsPushed();
+  bool modeDisplaySuppressed = interactionActive;
+  for (byte pos = 0; pos < NB_FADERS && !modeDisplaySuppressed; pos++) {
+    modeDisplaySuppressed = (faderVal[pos] != faderPos[pos]);
+  }
+  for (byte pos = 0; pos < NB_ENCODERS && !modeDisplaySuppressed; pos++) {
+    modeDisplaySuppressed = (encoderVal[pos] != encoderPos[pos]);
+  }
+  showModeIfChanged(modeContext.activeMode, modeDisplaySuppressed);
+  tickModeScroll(modeDisplaySuppressed);
 
   // Encoders et faders (sans encoder push)
   if (modeContext.ccActive || ccOverlayInSpecialMode) {

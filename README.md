@@ -36,6 +36,14 @@ Mode selection behavior:
 
 Right after activation, display shows one of:  `PLAY`, `CC`, `REPEAT`, `ULTRASONIC`, `RESET`.
 
+Mode transition display behavior:
+
+* On mode change, firmware arms a delayed non-blocking mode-label scroll (no immediate static mode print).
+* Mode-label scrolling is non-blocking and loop-driven: after 1500 ms idle it advances one frame every 120 ms while the main loop keeps running.
+* Scroll uses full mode labels and legacy-style framing (starts blank and ends blank).
+* If active interaction or any other display update occurs, pending/active mode scroll is canceled so control updates stay responsive.
+* RESET safety path is unchanged: threshold entry still triggers panic note-off and `reinit()`.
+
 Per-mode behavior:
 
 * **PLAY Mode:**
