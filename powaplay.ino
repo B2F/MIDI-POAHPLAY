@@ -649,7 +649,7 @@ const char* modeLabel(RuntimeMode mode) {
     case RuntimeMode::Repeat:
       return "rEPEAt";
     case RuntimeMode::Ultrasonic:
-      return "UltrA";
+      return "ULtra SOnIc";
     case RuntimeMode::Reset:
       return "rESEt";
   }
@@ -931,11 +931,19 @@ void appLoopImpl() {
     updateVelocityFromFader(0);
     updateOctaveFromFader(1);
 
-    // In Play mode, free encoder rotation controls channel/base note directly.
-    // This replaces the old velocity/octave-on-encoder behavior.
-    if (modeContext.allowFreeEncoder && modeContext.activeMode == RuntimeMode::Play) {
-      updateChannelFromEncoder(0);
-      updateBaseNoteFromEncoder(1);
+    if (modeContext.allowFreeEncoder) {
+      if (modeContext.activeMode == RuntimeMode::Play) {
+        updateChannelFromEncoder(0);
+        updateBaseNoteFromEncoder(1);
+      }
+      else if (modeContext.activeMode == RuntimeMode::Repeat) {
+        arpSelect(0);
+        updateArpRateFromEncoder(1);
+      }
+      else if (modeContext.activeMode == RuntimeMode::Ultrasonic) {
+        updateUltrasonicCC(0);
+        updateUltrasonicDistance(1);
+      }
     }
   }
 
@@ -951,20 +959,13 @@ void appLoopImpl() {
     }
   }
   else if (modeContext.ultrasonicActive) {
-    if (leftPush == PUSHED) {
-      updateUltrasonicCC(0);
-    }
-    if (rightPush == PUSHED) {
-      updateUltrasonicDistance(1);
-    }
+    // Ultrasonic edits are available on free encoder rotation.
   }
   else if (modeContext.repeatActive) {
     if (leftPush == PUSHED) {
-      arpSelect(0);
       updatePadsRepeatLockUnlock(false);
     }
     if (rightPush == PUSHED) {
-      updateArpRateFromEncoder(1);
       updatePadsRepeatLockUnlock(true);
     }
   }

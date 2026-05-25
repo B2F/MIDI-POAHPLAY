@@ -19,8 +19,8 @@ Quick controls overview:
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `PLAY` (SW_PLAY) | Velocity | Octave | MIDI channel (`CH1..CH16`) | Base note / transpose reference | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
-| `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
-| `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
+| `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Arp type select (CC lane 1 value if `SW_CC` ON) | Arp speed/divisor edit (CC lane 2 value if `SW_CC` ON) | Repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
+| `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 value if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 value if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 1 selection + presets if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 2 selection + presets if `SW_CC` ON) |
 | `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | no encoder-push rotation assignment | no encoder-push rotation assignment |
 
 Mode selection behavior:
@@ -63,17 +63,16 @@ Per-mode behavior:
   * Preset CC labels are displayed as `C091..C100`.
 
 * **REP Mode (`SW_REPEAT` switch)**
-  * Encoder turns are unassigned by default in REPEAT mode.
+  * With **no encoder push held**, encoder 1 selects arp type and encoder 2 edits arp rate/divisor.
   * If `SW_CC` is ON while in REPEAT mode, faders and encoders use CC behavior.
-  * Left encoder push: arp type select.
-  * Right encoder push: arp rate / divisor edit.
+  * Left encoder push: repeat unlock workflow.
+  * Right encoder push: repeat lock workflow.
   * Arp selector wraps around.
   * Pad repeat lock/unlock workflows are available in arp context (`repeatIsLocked`).
 
 * **Ultrasonic Mode (`SW_ULTRASONIC` switch)**
   * If `SW_CC` is ON while in ULTRASONIC mode, faders and encoders use CC behavior.
-  * Hold **Left encoder push** to set ultrasonic target CC number.
-  * Hold **Right encoder push** to set max ultrasonic distance range.
+  * With **no encoder push held**, encoder 1 sets ultrasonic target CC number and encoder 2 sets max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
 * **RESET Mode (mode-switch threshold ON edge)**
