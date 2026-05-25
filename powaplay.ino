@@ -13,6 +13,7 @@
 #include "src/platform/midi_iface.h"
 #include "src/hal/io_iface.h"
 #include "src/hal/display_iface.h"
+#include "src/hal/hardware_cleanup.h"
 
 const unsigned long BAUD_RATE PROGMEM = 38400;
 
@@ -107,6 +108,14 @@ uint16_t faderVal[NB_FADERS] = {0, 0};
 const uint16_t MAX_FADER_VALUE = kSelectedMappingProfile.faderMaxValue;
 const uint16_t MIN_FADER_VALUE = kSelectedMappingProfile.faderMinValue;
 const uint16_t FADER_THRESHOLD = kSelectedMappingProfile.faderThreshold;
+const uint16_t FADER_DEADBAND = kSelectedMappingProfile.faderDeadband;
+const uint16_t FADER_EMA_ALPHA_PERMILLE = kSelectedMappingProfile.faderEmaAlphaPermille;
+const unsigned long FADER_CC_MIN_UPDATE_INTERVAL_US = kSelectedMappingProfile.faderCcMinUpdateIntervalUs;
+hardware_cleanup::AnalogState faderCleanupState[NB_FADERS] = {
+  hardware_cleanup::makeAnalogState(),
+  hardware_cleanup::makeAnalogState()
+};
+unsigned long lastFaderCcSentMicros[NB_FADERS] = {0, 0};
 
 // Leds:
 
@@ -779,6 +788,10 @@ void reinit() {
     padNoteIsOn[i] = false;
     padActiveNote[i] = 0;
   }
+  for (byte i = 0; i < NB_FADERS; i++) {
+    faderCleanupState[i] = hardware_cleanup::makeAnalogState();
+    lastFaderCcSentMicros[i] = 0;
+  }
 }
 
 void appSetupImpl();
@@ -1343,22 +1356,15 @@ const char* getNoteFromMidiValue(byte midiValue) {
 }
 
 int readFader(byte selected) {
-  faderVal[selected] = readAnalogSignalStable(faderPin[selected]);
-  if (
-    faderVal[selected] > faderPos[selected] + FADER_THRESHOLD ||
-    faderVal[selected] < faderPos[selected] - FADER_THRESHOLD
-  ) {
-    if (faderVal[selected] >= MAX_FADER_VALUE) {
-      return 1024;
-    }
-    else if (faderVal[selected] <= MIN_FADER_VALUE) {
-      return 0;
-    }
-    return faderVal[selected];
-  }
-  else {
-    return faderPos[selected];
-  }
+  uint16_t raw = readAnalogSignalStable(faderPin[selected]);
+  hardware_cleanup::AnalogCleanupConfig config = {
+    MIN_FADER_VALUE,
+    MAX_FADER_VALUE,
+    FADER_THRESHOLD,
+    FADER_DEADBAND,
+    FADER_EMA_ALPHA_PERMILLE,
+  };
+  return hardware_cleanup::conditionAnalog(raw, faderPos[selected], faderCleanupState[selected], config);
 }
 
 int readEncoder(byte e) {
@@ -2145,11 +2151,18 @@ void updateCCValueFromFader(byte selected) {
   if (faderVal[selected] == faderPos[selected]) {
     return;
   }
+  unsigned long nowUs = micros();
+  if (FADER_CC_MIN_UPDATE_INTERVAL_US > 0 &&
+      lastFaderCcSentMicros[selected] != 0 &&
+      (unsigned long)(nowUs - lastFaderCcSentMicros[selected]) < FADER_CC_MIN_UPDATE_INTERVAL_US) {
+    return;
+  }
   faderPos[selected] = faderVal[selected];
   byte newCCValue = getMidiValueFromFader(selected);
   if (!sendControlChangeIfChanged(selected, midiCC[selected], newCCValue)) {
     return;
   }
+  lastFaderCcSentMicros[selected] = nowUs;
   midiCCValue[selected] = newCCValue;
   if (shouldSuppressLiveCCDisplay()) {
     return;
