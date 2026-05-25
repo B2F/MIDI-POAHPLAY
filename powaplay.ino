@@ -531,8 +531,8 @@ const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 1, 2, 2, 3, 4, 5, 5}, // Major
   {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
-  {0, 1, 4, 1, 2, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues
-  {1, 1, 3, 2, 1, UNASSIGNED, UNASSIGNED, UNASSIGNED}, // Blues minor
+  {0, 2, 3, 4, 7, 9, UNASSIGNED, UNASSIGNED}, // Blues (major-blues style)
+  {0, 3, 5, 6, 7, 10, UNASSIGNED, UNASSIGNED}, // Blues minor
   {0, 2, 4, 7, 9, 12, 14, 16}, // Major pentatonic
   {0, 2, 3, 5, 7, 9, 10, 12}, // Dorian
   {0, 1, 5, 7, 8, 12, 13, 17}, // Japanese / In Sen style
@@ -580,7 +580,32 @@ void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount,
 void buildOrderedActivePads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos, bool pinStart);
 
 byte readScaleStep(byte scaleIndex, byte padIndex) {
-  return pgm_read_byte(&SCALES[scaleIndex][padIndex]);
+  byte directStep = pgm_read_byte(&SCALES[scaleIndex][padIndex]);
+  if (directStep != UNASSIGNED) {
+    return directStep;
+  }
+
+  byte compactSteps[MAX_NOTES];
+  byte validCount = 0;
+  for (byte i = 0; i < MAX_NOTES; i++) {
+    byte step = pgm_read_byte(&SCALES[scaleIndex][i]);
+    if (step == UNASSIGNED) {
+      continue;
+    }
+    compactSteps[validCount++] = step;
+  }
+
+  if (validCount == 0) {
+    return UNASSIGNED;
+  }
+
+  byte wrappedIndex = padIndex % validCount;
+  byte octaveOffset = (padIndex / validCount) * 12;
+  int expandedStep = compactSteps[wrappedIndex] + octaveOffset;
+  if (expandedStep > 127) {
+    expandedStep = 127;
+  }
+  return (byte) expandedStep;
 }
 
 byte readDrumNote(byte padIndex) {
@@ -935,12 +960,72 @@ void updateChannelFromEncoder(byte selected) {
   }
 }
 
+bool noteBelongsToCurrentScale(int noteValue) {
+  if (selectedScale == SCALE_INDEX_DRUM) {
+    return true;
+  }
+
+  int normalized = (noteValue - (60 + globalNoteOffset)) % 12;
+  if (normalized < 0) {
+    normalized += 12;
+  }
+
+  for (byte pad = 0; pad < MAX_NOTES; pad++) {
+    byte step = readScaleStep(selectedScale, pad);
+    if (step == UNASSIGNED) {
+      continue;
+    }
+    if ((step % 12) == normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int stepNoteInCurrentScale(int currentNote, int direction) {
+  if (selectedScale == SCALE_INDEX_DRUM) {
+    int directNote = currentNote + direction;
+    if (directNote < 0) {
+      return 0;
+    }
+    if (directNote > 127) {
+      return 127;
+    }
+    return directNote;
+  }
+
+  int candidate = currentNote;
+  while (true) {
+    candidate += direction;
+    if (candidate <= 0) {
+      return 0;
+    }
+    if (candidate >= 127) {
+      return 127;
+    }
+    if (noteBelongsToCurrentScale(candidate)) {
+      return candidate;
+    }
+  }
+}
+
 void updateBaseNoteFromEncoder(byte selected) {
   if (encoderVal[selected] != encoderPos[selected]) {
+    int delta = encoderVal[selected] - encoderPos[selected];
+    int direction = delta > 0 ? 1 : -1;
+    int steps = delta > 0 ? delta : -delta;
+    int globalNote = 60 + globalNoteOffset;
     byte localPushNote = selectedPushPin != -1 ? pushNote[selectedPushPin] : (60 + globalNoteOffset);
+    int localNote = localPushNote;
+
+    for (int i = 0; i < steps; i++) {
+      globalNote = stepNoteInCurrentScale(globalNote, direction);
+      localNote = stepNoteInCurrentScale(localNote, direction);
+    }
+
     updateNotes(
-      (getMidiValueFromEncoder(60+globalNoteOffset, encoderVal[selected], encoderPos[selected]) - 60),
-      getMidiValueFromEncoder(localPushNote, encoderVal[selected], encoderPos[selected])
+      globalNote - 60,
+      localNote
     );
   }
   encoderPos[selected] = encoderVal[selected];

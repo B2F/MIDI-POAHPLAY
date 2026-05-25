@@ -41,6 +41,7 @@ Per-mode behavior:
 * **PLAY Mode:**
   * Fader 1 = Velocity, Fader 2 = Octave.
   * With **no encoder push held**, Encoder 1 turn = MIDI channel (`CH1..CH16`), Encoder 2 turn = base note / transpose reference.
+  * Base-note selection follows the currently selected scale (stepwise scale degrees instead of fixed chromatic semitones; DRUM keeps direct semitone stepping).
   * Left encoder push: scale select.
   * Right encoder push: chord select.
   * Chord and scale selectors wrap around.
@@ -76,6 +77,9 @@ Per-mode behavior:
 * **DRUM scale note path**
   * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
   * In DRUM scale, this direct map is used for playback instead of the generic scale-step transpose path.
+* **Scale pad filling (non-DRUM)**
+  * Scales that define fewer than 8 steps are auto-expanded across octaves so all 8 pads are playable.
+  * No pad is left silent because of `UNASSIGNED` scale slots; later pads continue the same scale in the next octave.
 
 * **Locking semantics note**
   * Play-mode pad settings lock (`pushSettingsLocked`) and Repeat-mode repeat lock (`repeatIsLocked`) are separate mechanisms.
