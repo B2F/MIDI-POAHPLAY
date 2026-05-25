@@ -46,12 +46,12 @@
 #define APP_MIDI_TRANSPORT MIDI_TRANSPORT_SERIAL
 #endif
 
-// Mode switches are mux channels SW_CC/SW_REPEAT/SW_ULTRASONIC/SW_PLAY.
+// Mode switch logic polarity.
 #ifndef APP_MODE_SWITCH_ACTIVE_LEVEL
 #define APP_MODE_SWITCH_ACTIVE_LEVEL INPUT_ACTIVE_HIGH
 #endif
 
-// Encoder pushes are mux channels encoder1Sw/encoder2Sw.
+// Encoder push logic polarity.
 #ifndef APP_ENCODER_PUSH_ACTIVE_LEVEL
 #define APP_ENCODER_PUSH_ACTIVE_LEVEL INPUT_ACTIVE_LOW
 #endif

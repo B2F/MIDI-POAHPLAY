@@ -3,37 +3,35 @@
 
 #include "../profile_types.h"
 
-static constexpr WiringProfile kWiringNanoDefault = {
-  "nano_default",
-  2,   // encoder1Clk
-  4,   // encoder1Dt
-  15,  // encoder1Sw (mux channel)
-  3,   // encoder2Clk
-  5,   // encoder2Dt
-  14,  // encoder2Sw (mux channel)
-  A0,  // muxSig
-  A1,  // muxS0
-  A2,  // muxS1
-  A3,  // muxS2
-  A4,  // muxS3
-  12,  // lcdClk
-  11,  // lcdDio
-  A6,  // fader1
-  A7,  // fader2
-  10,  // led1
-  9,   // led2
-  8,   // led3
-  7,   // led4
-  13,  // triggerPin
-  6,   // echoPin
-  A5,  // magnetPin
-  0,   // swCcChannel
-  1,   // swRepeatChannel
-  10,  // swUltrasonicChannel
-  11,  // swPlayChannel
-  {4, 3, 2, 5, 6, 7, 8, 9},  // pushPins (P1..P8)
+#define WIRING_PROFILE_TOPOLOGY WIRING_PROFILE_TOPOLOGY_SINGLE_MUX
+
+static constexpr SingleMuxWiringProfile kWiringNanoDefault = {
+  {
+    "nano_default",
+    {
+      {PIN(2), PIN(4), MUX_CH1(15)},  // encoder1 [clk, dt, sw]
+      {PIN(3), PIN(5), MUX_CH1(14)},  // encoder2 [clk, dt, sw]
+    },
+    {PIN(12), PIN(11)},  // lcd [clk, dio]
+    {PIN(A6), PIN(A7)},  // faders [fader1, fader2]
+    {PIN(10), PIN(9), PIN(8), PIN(7)},  // leds [led1..led4]
+    {PIN(13), PIN(6)},  // ultrasonic [trigger, echo]
+    PIN(A5),   // magnetPin
+    MUX_CH1(0),    // swCcChannel
+    MUX_CH1(1),    // swRepeatChannel
+    MUX_CH1(10),   // swUltrasonicChannel
+    MUX_CH1(11),   // swPlayChannel
+    {MUX_CH1(4), MUX_CH1(3), MUX_CH1(2), MUX_CH1(5), MUX_CH1(6), MUX_CH1(7), MUX_CH1(8), MUX_CH1(9)},  // pushPins (P1..P8)
+  },
+  {
+    PIN(A0),   // mux1Sig
+    PIN(A1),   // mux1S0
+    PIN(A2),   // mux1S1
+    PIN(A3),   // mux1S2
+    PIN(A4),   // mux1S3
+  },
 };
 
-static constexpr WiringProfile kWiringProfile = kWiringNanoDefault;
+static constexpr SingleMuxWiringProfile kWiringProfile = kWiringNanoDefault;
 
 #endif

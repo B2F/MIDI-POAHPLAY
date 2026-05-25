@@ -30,12 +30,12 @@ const byte NB_PUSH PROGMEM = 8;
 
 const byte NB_ENCODERS PROGMEM = 2;
 
-const byte P1CLK PROGMEM = kSelectedWiringProfile.encoder1Clk;
-const byte P1DT PROGMEM = kSelectedWiringProfile.encoder1Dt;
-const byte P1SW PROGMEM = kSelectedWiringProfile.encoder1Sw;
-const byte P2CLK PROGMEM = kSelectedWiringProfile.encoder2Clk;
-const byte P2DT PROGMEM = kSelectedWiringProfile.encoder2Dt;
-const byte P2SW PROGMEM = kSelectedWiringProfile.encoder2Sw;
+const byte P1CLK PROGMEM = kSelectedWiringProfile.encoders[0].clk.id;
+const byte P1DT PROGMEM = kSelectedWiringProfile.encoders[0].dt.id;
+const SignalRef P1SW = kSelectedWiringProfile.encoders[0].sw;
+const byte P2CLK PROGMEM = kSelectedWiringProfile.encoders[1].clk.id;
+const byte P2DT PROGMEM = kSelectedWiringProfile.encoders[1].dt.id;
+const SignalRef P2SW = kSelectedWiringProfile.encoders[1].sw;
 
 Encoder P1(P1CLK, P1DT);
 Encoder P2(P2CLK, P2DT);
@@ -50,8 +50,10 @@ const byte ENCODER_STEP PROGMEM = 4;
 
 // Multiplexer
 
-const byte MUXSIG PROGMEM = kSelectedWiringProfile.muxSig;
-CD74HC4067 mux(kSelectedWiringProfile.muxS0, kSelectedWiringProfile.muxS1, kSelectedWiringProfile.muxS2, kSelectedWiringProfile.muxS3);
+const byte MUX1SIG PROGMEM = kSelectedWiringProfile.mux1Sig.id;
+const byte MUX2SIG PROGMEM = kSelectedWiringProfile.mux2Sig.id;
+CD74HC4067 mux1(kSelectedWiringProfile.mux1S0.id, kSelectedWiringProfile.mux1S1.id, kSelectedWiringProfile.mux1S2.id, kSelectedWiringProfile.mux1S3.id);
+CD74HC4067 mux2(kSelectedWiringProfile.mux2S0.id, kSelectedWiringProfile.mux2S1.id, kSelectedWiringProfile.mux2S2.id, kSelectedWiringProfile.mux2S3.id);
 
 // MIDI
 
@@ -90,17 +92,14 @@ unsigned long lastNoteRepeat = 0;
 
 // LCD
 
-const byte LCD_CLK PROGMEM = kSelectedWiringProfile.lcdClk;
-const byte LCD_DIO PROGMEM = kSelectedWiringProfile.lcdDio;
+const byte LCD_CLK PROGMEM = kSelectedWiringProfile.lcd.clk.id;
+const byte LCD_DIO PROGMEM = kSelectedWiringProfile.lcd.dio.id;
 
 SevenSegmentFun display(LCD_CLK, LCD_DIO);
 
 // Faders:
 
-const byte F1 PROGMEM = kSelectedWiringProfile.fader1;
-const byte F2 PROGMEM = kSelectedWiringProfile.fader2;
-
-const byte faderPin[2] PROGMEM = {F1, F2};
+const SignalRef faderPin[2] = {kSelectedWiringProfile.faders[0], kSelectedWiringProfile.faders[1]};
 const byte NB_FADERS PROGMEM = 2;
 uint16_t faderPos[NB_FADERS] = {0, 0};
 uint16_t faderVal[NB_FADERS] = {0, 0};
@@ -111,15 +110,15 @@ const uint16_t FADER_THRESHOLD = kSelectedMappingProfile.faderThreshold;
 
 // Leds:
 
-const byte L1 PROGMEM = kSelectedWiringProfile.led1;
-const byte L2 PROGMEM = kSelectedWiringProfile.led2;
-const byte L3 PROGMEM = kSelectedWiringProfile.led3;
-const byte L4 PROGMEM = kSelectedWiringProfile.led4;
+const byte L1 PROGMEM = kSelectedWiringProfile.leds[0].id;
+const byte L2 PROGMEM = kSelectedWiringProfile.leds[1].id;
+const byte L3 PROGMEM = kSelectedWiringProfile.leds[2].id;
+const byte L4 PROGMEM = kSelectedWiringProfile.leds[3].id;
 
 // Ultrasonic
 
-const byte triggerPin PROGMEM = kSelectedWiringProfile.triggerPin;
-const byte echoPin PROGMEM = kSelectedWiringProfile.echoPin;
+const byte triggerPin PROGMEM = kSelectedWiringProfile.ultrasonic.trigger.id;
+const byte echoPin PROGMEM = kSelectedWiringProfile.ultrasonic.echo.id;
 
 UltraSonicDistanceSensor distanceSensor(triggerPin, echoPin);
 
@@ -140,14 +139,14 @@ unsigned long lastUltrasonicUpdateMicros = 0;
 
 // Magnet
 
-const byte MAGNET PROGMEM = kSelectedWiringProfile.magnetPin;
+const byte MAGNET PROGMEM = kSelectedWiringProfile.magnetPin.id;
 
 // Switches
 
-const byte SW_CC PROGMEM = kSelectedWiringProfile.swCcChannel;
-const byte SW_REPEAT PROGMEM = kSelectedWiringProfile.swRepeatChannel;
-const byte SW_ULTRASONIC PROGMEM = kSelectedWiringProfile.swUltrasonicChannel;
-const byte SW_PLAY PROGMEM = kSelectedWiringProfile.swPlayChannel;
+const SignalRef SW_CC = kSelectedWiringProfile.swCcChannel;
+const SignalRef SW_REPEAT = kSelectedWiringProfile.swRepeatChannel;
+const SignalRef SW_ULTRASONIC = kSelectedWiringProfile.swUltrasonicChannel;
+const SignalRef SW_PLAY = kSelectedWiringProfile.swPlayChannel;
 
 const byte INIT_MASK PROGMEM =       B00000010;
 const byte CC_MASK PROGMEM =         B00000100;
@@ -189,7 +188,12 @@ RuntimeMode activeMode = RuntimeMode::Play;
 RuntimeMode previousDisplayedMode = RuntimeMode::Play;
 bool forceModeLabelDisplay = false;
 
-byte switches[4][2] = {
+struct ModeSwitchRef {
+  SignalRef signal;
+  byte mask;
+};
+
+ModeSwitchRef switches[4] = {
   {SW_CC, CC_MASK},
   {SW_PLAY, INIT_MASK},
   {SW_ULTRASONIC, ULTRASONIC_MASK},
@@ -213,6 +217,40 @@ bool isActiveLevel(byte rawValue, uint8_t activeLevel) {
     return rawValue == LOW;
   }
   return rawValue == HIGH;
+}
+
+byte readDigitalSignalStable(SignalRef signal) {
+  if (isMux1Source(signal)) {
+    mux1.channel(signal.id);
+    delayMicroseconds(3);
+    return io_iface::readDigital(MUX1SIG);
+  }
+  if (isMux2Source(signal)) {
+    if (!isUsableSignalPin(kSelectedWiringProfile.mux2Sig)) {
+      return RELEASED;
+    }
+    mux2.channel(signal.id);
+    delayMicroseconds(3);
+    return io_iface::readDigital(MUX2SIG);
+  }
+  return io_iface::readDigital(signal.id);
+}
+
+int readAnalogSignalStable(SignalRef signal) {
+  if (isMux1Source(signal)) {
+    mux1.channel(signal.id);
+    delayMicroseconds(3);
+    return io_iface::readAnalog(MUX1SIG);
+  }
+  if (isMux2Source(signal)) {
+    if (!isUsableSignalPin(kSelectedWiringProfile.mux2Sig)) {
+      return 0;
+    }
+    mux2.channel(signal.id);
+    delayMicroseconds(3);
+    return io_iface::readAnalog(MUX2SIG);
+  }
+  return io_iface::readAnalog(signal.id);
 }
 
 bool isModeSwitchActive(byte rawValue) {
@@ -374,7 +412,7 @@ const char* const ARP_NAMES[NB_ARP_TYPES] PROGMEM = {
   kArpName10
 };
 
-const byte pushPin[NB_PUSH] = {
+const SignalRef pushPin[NB_PUSH] = {
   kSelectedWiringProfile.pushPins[0],
   kSelectedWiringProfile.pushPins[1],
   kSelectedWiringProfile.pushPins[2],
@@ -714,7 +752,10 @@ void appSetupImpl() {
   io_iface::writeDigital(MAGNET, HIGH);
 
   // mux sig:
-  io_iface::setPinMode(MUXSIG, INPUT_PULLUP);
+  io_iface::setPinMode(MUX1SIG, INPUT_PULLUP);
+  if (isUsableSignalPin(kSelectedWiringProfile.mux2Sig)) {
+    io_iface::setPinMode(MUX2SIG, INPUT_PULLUP);
+  }
 
   // Internal led:
   io_iface::setPinMode(LED_BUILTIN, OUTPUT);
@@ -724,7 +765,7 @@ void appSetupImpl() {
   quarterNoteTime = micros();
   oneNoteTime = getNoteMicros();
 
-  byte bootPlayRaw = readMuxDigitalStable(SW_PLAY);
+  byte bootPlayRaw = readDigitalSignalStable(SW_PLAY);
   bool bootPlaySwitchOn = isModeSwitchActive(bootPlayRaw);
 
   readSwitches();
@@ -1147,7 +1188,7 @@ const char* getNoteFromMidiValue(byte midiValue) {
 }
 
 int readFader(byte selected) {
-  faderVal[selected] = io_iface::readAnalog(faderPin[selected]);
+  faderVal[selected] = readAnalogSignalStable(faderPin[selected]);
   if (
     faderVal[selected] > faderPos[selected] + FADER_THRESHOLD ||
     faderVal[selected] < faderPos[selected] - FADER_THRESHOLD
@@ -1633,8 +1674,7 @@ void updatePads() {
 
   for (byte p = 0; p < NB_PUSH; p++) {
 
-    mux.channel(pushPin[p]);
-    byte sensorVal = io_iface::readDigital(MUXSIG);
+    byte sensorVal = readDigitalSignalStable(pushPin[p]);
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
       byte orderedAnchorBeforePress = UNASSIGNED;
@@ -1816,19 +1856,13 @@ void MidiSync() {
   midiCLockTick++;
 }
 
-byte readMuxDigitalStable(byte channel) {
-  mux.channel(channel);
-  delayMicroseconds(3);
-  return io_iface::readDigital(MUXSIG);
-}
-
 void readSwitches() {
 
   currentInputState = {false, false, false, false, false, false};
   for (byte position = 0; position < 4; position++) {
-    byte sw = switches[position][0];
-    byte mask = switches[position][1];
-    byte switchRaw = readMuxDigitalStable(sw);
+    SignalRef sw = switches[position].signal;
+    byte mask = switches[position].mask;
+    byte switchRaw = readDigitalSignalStable(sw);
     bool modeActive = isModeSwitchActive(switchRaw);
     if (modeActive) {
       if (mask == CC_MASK) {
@@ -1846,9 +1880,9 @@ void readSwitches() {
     }
   }
 
-  currentInputState.leftPush = isEncoderPushActive(readMuxDigitalStable(P1SW));
+  currentInputState.leftPush = isEncoderPushActive(readDigitalSignalStable(P1SW));
   leftPush = currentInputState.leftPush ? PUSHED : RELEASED;
-  currentInputState.rightPush = isEncoderPushActive(readMuxDigitalStable(P2SW));
+  currentInputState.rightPush = isEncoderPushActive(readDigitalSignalStable(P2SW));
   rightPush = currentInputState.rightPush ? PUSHED : RELEASED;
 
   currentPlayMode = B00000000;

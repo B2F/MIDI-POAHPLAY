@@ -33,7 +33,17 @@ static constexpr BoardProfile kSelectedBoardProfile = kBoardProMicro;
 #error "Unknown APP_BOARD_PROFILE"
 #endif
 
-static constexpr WiringProfile kSelectedWiringProfile = kWiringProfile;
+#if !defined(WIRING_PROFILE_TOPOLOGY)
+#error "Wiring profile header must define WIRING_PROFILE_TOPOLOGY"
+#endif
+
+#if WIRING_PROFILE_TOPOLOGY == WIRING_PROFILE_TOPOLOGY_SINGLE_MUX
+static constexpr ResolvedWiringProfile kSelectedWiringProfile = resolveWiringProfile(kWiringProfile);
+#elif WIRING_PROFILE_TOPOLOGY == WIRING_PROFILE_TOPOLOGY_DUAL_MUX
+static constexpr ResolvedWiringProfile kSelectedWiringProfile = resolveWiringProfile(kWiringProfile);
+#else
+#error "Unknown WIRING_PROFILE_TOPOLOGY"
+#endif
 
 #if APP_MAPPING_PROFILE == MAPPING_DEFAULT
 static constexpr MappingProfile kSelectedMappingProfile = kDefaultMapping;
@@ -54,8 +64,71 @@ static_assert(kSelectedBoardProfile.hasNativeUsbMidi || APP_MIDI_TRANSPORT != MI
               "Selected board profile does not support USB MIDI transport");
 
 static_assert(kSelectedBoardProfile.hasA6A7 ||
-              (kSelectedWiringProfile.fader1 != A6 && kSelectedWiringProfile.fader1 != A7 &&
-               kSelectedWiringProfile.fader2 != A6 && kSelectedWiringProfile.fader2 != A7),
+              (!isA6A7Pin(kSelectedWiringProfile.faders[0]) && !isA6A7Pin(kSelectedWiringProfile.faders[1])),
               "Selected board profile does not support A6/A7 fader wiring");
+
+static_assert(isPinSource(kSelectedWiringProfile.mux1Sig) &&
+              isPinSource(kSelectedWiringProfile.encoders[0].clk) &&
+              isPinSource(kSelectedWiringProfile.encoders[0].dt) &&
+              isPinSource(kSelectedWiringProfile.encoders[1].clk) &&
+              isPinSource(kSelectedWiringProfile.encoders[1].dt) &&
+              isPinSource(kSelectedWiringProfile.mux1S0) &&
+              isPinSource(kSelectedWiringProfile.mux1S1) &&
+              isPinSource(kSelectedWiringProfile.mux1S2) &&
+              isPinSource(kSelectedWiringProfile.mux1S3) &&
+              isPinSource(kSelectedWiringProfile.mux2Sig) &&
+              isPinSource(kSelectedWiringProfile.mux2S0) &&
+              isPinSource(kSelectedWiringProfile.mux2S1) &&
+              isPinSource(kSelectedWiringProfile.mux2S2) &&
+              isPinSource(kSelectedWiringProfile.mux2S3) &&
+              isPinSource(kSelectedWiringProfile.lcd.clk) &&
+              isPinSource(kSelectedWiringProfile.lcd.dio) &&
+              isPinSource(kSelectedWiringProfile.leds[0]) &&
+              isPinSource(kSelectedWiringProfile.leds[1]) &&
+              isPinSource(kSelectedWiringProfile.leds[2]) &&
+              isPinSource(kSelectedWiringProfile.leds[3]) &&
+              isPinSource(kSelectedWiringProfile.ultrasonic.trigger) &&
+              isPinSource(kSelectedWiringProfile.ultrasonic.echo) &&
+              isPinSource(kSelectedWiringProfile.magnetPin),
+              "Selected wiring uses mux source for a signal that currently requires native pins");
+
+static_assert(isValidMuxSignal(kSelectedWiringProfile.encoders[0].sw) &&
+              isValidMuxSignal(kSelectedWiringProfile.encoders[1].sw) &&
+              isValidMuxSignal(kSelectedWiringProfile.faders[0]) &&
+              isValidMuxSignal(kSelectedWiringProfile.faders[1]) &&
+              isValidMuxSignal(kSelectedWiringProfile.swCcChannel) &&
+              isValidMuxSignal(kSelectedWiringProfile.swRepeatChannel) &&
+              isValidMuxSignal(kSelectedWiringProfile.swUltrasonicChannel) &&
+              isValidMuxSignal(kSelectedWiringProfile.swPlayChannel) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[0]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[1]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[2]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[3]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[4]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[5]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[6]) &&
+              isValidMuxSignal(kSelectedWiringProfile.pushPins[7]),
+              "Mux channel wiring must be in the range [0, 15]");
+
+#if WIRING_PROFILE_TOPOLOGY == WIRING_PROFILE_TOPOLOGY_SINGLE_MUX
+static_assert(!isMux2Source(kSelectedWiringProfile.encoders[0].sw) &&
+              !isMux2Source(kSelectedWiringProfile.encoders[1].sw) &&
+              !isMux2Source(kSelectedWiringProfile.faders[0]) &&
+              !isMux2Source(kSelectedWiringProfile.faders[1]) &&
+              !isMux2Source(kSelectedWiringProfile.swCcChannel) &&
+              !isMux2Source(kSelectedWiringProfile.swRepeatChannel) &&
+              !isMux2Source(kSelectedWiringProfile.swUltrasonicChannel) &&
+              !isMux2Source(kSelectedWiringProfile.swPlayChannel) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[0]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[1]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[2]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[3]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[4]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[5]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[6]) &&
+              !isMux2Source(kSelectedWiringProfile.pushPins[7]),
+              "Single-mux wiring cannot route inputs through MUX2"
+);
+#endif
 
 #endif
