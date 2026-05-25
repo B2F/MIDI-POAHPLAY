@@ -1362,7 +1362,7 @@ int readFader(byte selected) {
 }
 
 int readEncoder(byte e) {
-  int position = encoder[e]->read();
+  int position = encoder[e]->read() / ENCODER_STEP;
   if (encoderPos[e] != position) {
     return position;
   }
