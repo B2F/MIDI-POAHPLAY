@@ -666,6 +666,7 @@ void reinit() {
 
   for (byte i = 0; i < 8; i++) {
     pushVelocity[i] = 100;
+    pushNote[i] = globalStartNote + i;
   }
   for (byte i = 0; i < 8; i++) {
     pushSettingsLocked[i] = false;
@@ -837,24 +838,16 @@ void appLoopImpl() {
     updateVelocityFromFader(0);
     updateOctaveFromFader(1);
 
-    // Same reservation rule in non-CC mode: any encoder push pauses both
-    // free-encoder updates so pressed context keeps display/control priority.
-    if (modeContext.allowFreeEncoder && !modeContext.repeatActive) {
-      updateVelocityFromEncoder(0);
-      updateOctaveFromEncoder(1);
+    // In Play mode, free encoder rotation controls channel/base note directly.
+    // This replaces the old velocity/octave-on-encoder behavior.
+    if (modeContext.allowFreeEncoder && modeContext.activeMode == RuntimeMode::Play) {
+      updateChannelFromEncoder(0);
+      updateBaseNoteFromEncoder(1);
     }
   }
 
   // Encoder push
-  if (modeContext.resetActive) {
-    if (leftPush == PUSHED) {
-      updateChannelFromEncoder(0);
-    }
-    if (rightPush == PUSHED) {
-      updateBaseNoteFromEncoder(1);
-    }
-  }
-  else if (ccOverlayInSpecialMode) {
+  if (ccOverlayInSpecialMode) {
     if (leftPush == PUSHED) {
       updateMidiControlFromEncoder(0);
       selectCCPreset(0);
@@ -998,6 +991,7 @@ void updateOctaveFromFader(byte selected) {
   if (faderVal[selected] == faderPos[selected]) {
     return;
   }
+  int previousOctave = octave;
   int relativeValue = (faderVal[selected] - 1024) * (-1);
   if (relativeValue >= MAX_FADER_VALUE) {
     relativeValue = 1024;
@@ -1019,12 +1013,33 @@ void updateOctaveFromFader(byte selected) {
       display_iface::print(label);
     }
   }
-  globalNoteOffset = octave * 12;
+  int octaveDelta = octave - previousOctave;
+  if (octaveDelta != 0) {
+    globalNoteOffset += octaveDelta * 12;
+    if (60 + globalNoteOffset < 0) {
+      globalNoteOffset = -60;
+    }
+    if (60 + globalNoteOffset > 127) {
+      globalNoteOffset = 67;
+    }
+  }
+  if (octaveDelta != 0 && selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
+    if (updatedNote < 0) {
+      updatedNote = 0;
+    }
+    if (updatedNote > 127) {
+      updatedNote = 127;
+    }
+    pushNote[selectedPushPin] = (byte) updatedNote;
+  }
   faderPos[selected] = faderVal[selected];
 
-  // Live transposition: if pads are currently held, retrigger them
-  // so the pitch follows the octave change.
-  retriggerHeldPads();
+  if (octaveDelta != 0) {
+    // Live transposition: if pads are currently held, retrigger them
+    // so the pitch follows the octave change.
+    retriggerHeldPads();
+  }
 }
 
 void updateVelocityFromEncoder(byte selected) { 
@@ -1256,6 +1271,7 @@ void updateNotes(int globalMidiOffset, int localMidiOffset) {
 }
 
 void moveOctave(bool up) {
+  int previousOctave = octave;
   if (up && octave < 6) {
     octave++;
   }
@@ -1280,10 +1296,31 @@ void moveOctave(bool up) {
     display_iface::print(label);
   }
   display_iface::setColonOn(false);
-  globalNoteOffset = octave * 12;
+  int octaveDelta = octave - previousOctave;
+  if (octaveDelta != 0) {
+    globalNoteOffset += octaveDelta * 12;
+    if (60 + globalNoteOffset < 0) {
+      globalNoteOffset = -60;
+    }
+    if (60 + globalNoteOffset > 127) {
+      globalNoteOffset = 67;
+    }
+  }
+  if (octaveDelta != 0 && selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
+    if (updatedNote < 0) {
+      updatedNote = 0;
+    }
+    if (updatedNote > 127) {
+      updatedNote = 127;
+    }
+    pushNote[selectedPushPin] = (byte) updatedNote;
+  }
 
-  // Live transposition for encoder octave changes too.
-  retriggerHeldPads();
+  if (octaveDelta != 0) {
+    // Live transposition for encoder octave changes too.
+    retriggerHeldPads();
+  }
 }
 
 void retriggerHeldPads() {
@@ -1637,6 +1674,7 @@ void updatePadsLock(bool lock) {
       }
       else {
         pushSettingsLocked[p] = false;
+        pushNote[p] = globalStartNote + p;
         display_iface::print("GL0b");
       }
       display_iface::setColonOn(false);
@@ -1717,6 +1755,19 @@ void updatePads() {
       if (!repeatIsLocked[p]) {
         padPressOrder[p] = 0;
         resetArpState(p);
+      }
+      if (selectedPushPin == p) {
+        selectedPushPin = -1;
+        unsigned long latestOrder = 0;
+        for (byte candidate = 0; candidate < NB_PUSH; candidate++) {
+          if (isPushed[candidate] != PUSHED) {
+            continue;
+          }
+          if (selectedPushPin == -1 || padPressOrder[candidate] > latestOrder) {
+            selectedPushPin = candidate;
+            latestOrder = padPressOrder[candidate];
+          }
+        }
       }
     }
   }

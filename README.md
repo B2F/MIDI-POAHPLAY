@@ -17,11 +17,11 @@ Quick controls overview:
 
 | Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `PLAY` (SW_PLAY) | Velocity | Octave | Velocity | Octave | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
+| `PLAY` (SW_PLAY) | Velocity | Octave | MIDI channel (`CH1..CH16`) | Base note / transpose reference | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
 | `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | unassigned (CC lane 1 value if `SW_CC` ON) | unassigned (CC lane 2 value if `SW_CC` ON) | Arp type select + repeat unlock workflow (CC lane 1 selection + presets if `SW_CC` ON) | Arp speed/divisor edit + repeat lock workflow (CC lane 2 selection + presets if `SW_CC` ON) |
 | `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 selection + presets if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 selection + presets if `SW_CC` ON) |
-| `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | MIDI channel edit (`CHx`) | Base note / transpose reference edit |
+| `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | no encoder-push rotation assignment | no encoder-push rotation assignment |
 
 Mode selection behavior:
 
@@ -40,7 +40,7 @@ Per-mode behavior:
 
 * **PLAY Mode:**
   * Fader 1 = Velocity, Fader 2 = Octave.
-  * Encoder 1 = Velocity, Encoder 2 = Octave.
+  * With **no encoder push held**, Encoder 1 turn = MIDI channel (`CH1..CH16`), Encoder 2 turn = base note / transpose reference.
   * Left encoder push: scale select.
   * Right encoder push: chord select.
   * Chord and scale selectors wrap around.
@@ -69,8 +69,8 @@ Per-mode behavior:
 
 * **RESET Mode (mode-switch threshold ON edge)**
   * `reinit()` runs once when active mode switches reach the configured threshold.
-  * Left encoder push: MIDI channel (`CHx`).
-  * Right encoder push: base note / transpose reference.
+  * Panic safety is triggered on RESET entry (`All Notes Off` + `All Sound Off`) and local note state is cleared.
+  * No dedicated encoder-push + rotation edit assignment in RESET mode.
   * RESET stays active until a new mode ON edge is received (`CC`, `REPEAT`, `ULTRASONIC`, or `PLAY`).
 
 * **DRUM scale note path**
@@ -86,8 +86,8 @@ Per-mode behavior:
 ### Musical Engine
 * 8 pads (`P1..P8`) mapped to semitone positions with optional scale remap.
 * Global velocity + per-pad velocity lock.
-* Global base note / transpose editing in Init workflow.
-* Global octave control (fader + encoder), with note-layout updates applied live.
+* Global base note / transpose editing from PLAY mode Encoder 2 turn.
+* Global octave control from Fader 2, with note-layout updates applied live.
 * Chord engine with **14 chord types**:
   * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`, `d7`, `5th`, `Ad9`, `m7b6`
 * Scale engine with **10 scale layouts**:
