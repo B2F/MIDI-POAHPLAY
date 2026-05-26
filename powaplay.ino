@@ -203,6 +203,9 @@ display_iface::NonBlockingScrollState modeScrollState;
 uint32_t modeScrollBaselineMutation = 0;
 const unsigned long MODE_SCROLL_DELAY_MS = 0;
 const unsigned long MODE_SCROLL_STEP_MS = 120;
+display_iface::NonBlockingScrollState lockFeedbackScrollState;
+uint32_t lockFeedbackBaselineMutation = 0;
+bool suppressPadNoteDisplay = false;
 
 struct ModeSwitchRef {
   SignalRef signal;
@@ -227,6 +230,10 @@ bool encoderSwitch1isActive = false;
 bool encoderSwitch2isActive = false;
 byte rightPush = RELEASED;
 byte leftPush = RELEASED;
+bool prevLeftPushActive = false;
+bool prevRightPushActive = false;
+bool leftPushRisingEdge = false;
+bool rightPushRisingEdge = false;
 
 bool isActiveLevel(byte rawValue, uint8_t activeLevel) {
   if (activeLevel == INPUT_ACTIVE_LOW) {
@@ -711,6 +718,102 @@ void tickModeScroll(bool interactionActive) {
   display_iface::tickScroll(modeScrollState);
 }
 
+void queueLockFeedback(bool isLocked, byte pad) {
+  char label[16];
+  snprintf(label, sizeof(label), "%s P%u SET", isLocked ? "LOC" : "ULOC", pad + 1);
+  modeScrollPending = false;
+  display_iface::cancelScroll(modeScrollState);
+  display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
+  lockFeedbackBaselineMutation = display_iface::getMutationCounter();
+}
+
+void queueRepeatLockFeedback(bool isLocked, byte pad) {
+  char label[24];
+  snprintf(label, sizeof(label), "%s P%u REP", isLocked ? "LOC" : "ULOC", pad + 1);
+  modeScrollPending = false;
+  display_iface::cancelScroll(modeScrollState);
+  display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
+  lockFeedbackBaselineMutation = display_iface::getMutationCounter();
+}
+
+void updateHeldPadsRepeatLock(bool isLocked) {
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (isPushed[p] != PUSHED) {
+      continue;
+    }
+    if (isLocked && !repeatIsLocked[p]) {
+      resetPadRepeatToGlobal(p);
+      repeatIsLocked[p] = true;
+    }
+    else if (!isLocked && repeatIsLocked[p]) {
+      repeatIsLocked[p] = false;
+      resetPadRepeatToGlobal(p);
+      padScheduledOffMicros[p] = 0;
+      if (padNoteIsOn[p]) {
+        sendNote(padActiveNote[p], 0, false);
+        padNoteIsOn[p] = false;
+      }
+      resetArpState(p);
+    }
+    queueRepeatLockFeedback(repeatIsLocked[p], p);
+  }
+}
+
+void updateHeldPadsSettingsLock(bool isLocked) {
+  bool anyChanged = false;
+  for (byte p = 0; p < NB_PUSH; p++) {
+    if (isPushed[p] != PUSHED) {
+      continue;
+    }
+    if (isLocked && !pushSettingsLocked[p]) {
+      pushSettingsLocked[p] = true;
+      anyChanged = true;
+    }
+    else if (!isLocked && pushSettingsLocked[p]) {
+      pushSettingsLocked[p] = false;
+      resetPadToGlobalSettings(p);
+      anyChanged = true;
+    }
+    queueLockFeedback(pushSettingsLocked[p], p);
+  }
+  if (anyChanged) {
+    syncHeldPadsAfterNoteLayoutChange();
+  }
+}
+
+void resetPadToGlobalSettings(byte pad) {
+  pushNote[pad] = globalStartNote + pad;
+  pushVelocity[pad] = globalVelocity;
+  pushRepeatSpeed[pad][0] = 1;
+  pushRepeatSpeed[pad][1] = repeatSpeedDivisor;
+  pendingRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
+  pendingRepeatSpeedChange[pad] = false;
+  liveRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
+}
+
+void resetPadRepeatToGlobal(byte pad) {
+  pushRepeatSpeed[pad][0] = 1;
+  pushRepeatSpeed[pad][1] = repeatSpeedDivisor;
+  pendingRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
+  pendingRepeatSpeedChange[pad] = false;
+  liveRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
+}
+
+void tickLockFeedback(bool interactionActive) {
+  if (!lockFeedbackScrollState.active) {
+    return;
+  }
+  if (interactionActive && !suppressPadNoteDisplay) {
+    display_iface::cancelScroll(lockFeedbackScrollState);
+    return;
+  }
+  if (display_iface::getMutationCounter() != lockFeedbackBaselineMutation) {
+    display_iface::cancelScroll(lockFeedbackScrollState);
+    return;
+  }
+  display_iface::tickScroll(lockFeedbackScrollState);
+}
+
 void reinit() {
   midiCC[0] = kSelectedMappingProfile.defaultCcLane1;
   midiCC[1] = kSelectedMappingProfile.defaultCcLane2;
@@ -742,6 +845,12 @@ void reinit() {
   encoderSwitch2isActive = false;
   rightPush = RELEASED;
   leftPush = RELEASED;
+  prevLeftPushActive = false;
+  prevRightPushActive = false;
+  leftPushRisingEdge = false;
+  rightPushRisingEdge = false;
+  display_iface::cancelScroll(lockFeedbackScrollState);
+  lockFeedbackBaselineMutation = 0;
   selectedMode = RuntimeMode::Play;
   activeMode = RuntimeMode::Play;
   previousDisplayedMode = RuntimeMode::Play;
@@ -883,7 +992,29 @@ void appLoopImpl() {
 
   readSwitches();
   ModeContext modeContext = deriveModeContext(currentInputState);
+  bool leftPushActive = (leftPush == PUSHED);
+  bool rightPushActive = (rightPush == PUSHED);
+  leftPushRisingEdge = leftPushActive && !prevLeftPushActive;
+  rightPushRisingEdge = rightPushActive && !prevRightPushActive;
+  prevLeftPushActive = leftPushActive;
+  prevRightPushActive = rightPushActive;
   bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
+
+  for (byte pos = 0; pos < NB_FADERS; pos++) {
+    faderVal[pos] = readFader(pos);
+  }
+  for (byte pos = 0; pos < NB_ENCODERS; pos++) {
+    encoderVal[pos] = readEncoder(pos);
+  }
+
+  bool anyEncoderMovement = false;
+  for (byte pos = 0; pos < NB_ENCODERS; pos++) {
+    if (encoderVal[pos] != encoderPos[pos]) {
+      anyEncoderMovement = true;
+      break;
+    }
+  }
+  suppressPadNoteDisplay = modeContext.anyEncoderPush || anyEncoderMovement || lockFeedbackScrollState.active;
 
   updatePads();
   io_iface::writeDigital(MAGNET, aPadIsPushed() ? LOW : HIGH);
@@ -902,13 +1033,6 @@ void appLoopImpl() {
     updateLedsPads();
   }
 
-  for (byte pos = 0; pos < NB_FADERS; pos++) {
-    faderVal[pos] = readFader(pos);
-  }
-  for (byte pos = 0; pos < NB_ENCODERS; pos++) {
-    encoderVal[pos] = readEncoder(pos); 
-  }
-
   bool interactionActive = modeContext.anyEncoderPush || aPadIsPushed();
   bool modeDisplaySuppressed = interactionActive;
   for (byte pos = 0; pos < NB_FADERS && !modeDisplaySuppressed; pos++) {
@@ -919,6 +1043,7 @@ void appLoopImpl() {
   }
   showModeIfChanged(modeContext.activeMode, modeDisplaySuppressed);
   tickModeScroll(modeDisplaySuppressed);
+  tickLockFeedback(modeDisplaySuppressed);
 
   // Encoders et faders (sans encoder push)
   if (modeContext.ccActive || ccOverlayInSpecialMode) {
@@ -968,10 +1093,20 @@ void appLoopImpl() {
   }
   else if (modeContext.repeatActive) {
     if (leftPush == PUSHED) {
-      updateSwingFromEncoder(0);
+      if (leftPushRisingEdge && aPadIsPushed()) {
+        updateHeldPadsRepeatLock(false);
+      }
+      else {
+        updateSwingFromEncoder(0);
+      }
     }
     if (rightPush == PUSHED) {
-      updateBpmFromEncoder(1);
+      if (rightPushRisingEdge && aPadIsPushed()) {
+        updateHeldPadsRepeatLock(true);
+      }
+      else {
+        updateBpmFromEncoder(1);
+      }
     }
   }
   else if (modeContext.ccActive) {
@@ -986,12 +1121,20 @@ void appLoopImpl() {
   }
   else {
     if (leftPush == PUSHED) {
-      scaleSelect(0);
-      updatePadsLock(true);
+      if (leftPushRisingEdge && aPadIsPushed()) {
+        updateHeldPadsSettingsLock(false);
+      }
+      else {
+        scaleSelect(0);
+      }
     }
     if (rightPush == PUSHED) {
-      chordSelect(1);
-      updatePadsLock(false);
+      if (rightPushRisingEdge && aPadIsPushed()) {
+        updateHeldPadsSettingsLock(true);
+      }
+      else {
+        chordSelect(1);
+      }
     }
   }
 
@@ -1101,19 +1244,25 @@ void updateBaseNoteFromEncoder(byte selected) {
     int delta = encoderVal[selected] - encoderPos[selected];
     int direction = delta > 0 ? 1 : -1;
     int steps = delta > 0 ? delta : -delta;
-    int globalNote = 60 + globalNoteOffset;
-    byte localPushNote = selectedPushPin != -1 ? pushNote[selectedPushPin] : (60 + globalNoteOffset);
-    int localNote = localPushNote;
-
-    for (int i = 0; i < steps; i++) {
-      globalNote = stepNoteInCurrentScale(globalNote, direction);
-      localNote = stepNoteInCurrentScale(localNote, direction);
+    bool hasLockedTarget = (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]);
+    if (hasLockedTarget) {
+      int localNote = pushNote[selectedPushPin];
+      for (int i = 0; i < steps; i++) {
+        localNote = stepNoteInCurrentScale(localNote, direction);
+      }
+      pushNote[selectedPushPin] = (byte) localNote;
+      displayPrintString(getNoteFromMidiValue(pushNote[selectedPushPin]));
+      syncHeldPadsAfterNoteLayoutChange();
     }
-
-    updateNotes(
-      globalNote - 60,
-      localNote
-    );
+    else {
+      int globalNote = 60 + globalNoteOffset;
+      int localNote = selectedPushPin != -1 ? pushNote[selectedPushPin] : globalNote;
+      for (int i = 0; i < steps; i++) {
+        globalNote = stepNoteInCurrentScale(globalNote, direction);
+        localNote = stepNoteInCurrentScale(localNote, direction);
+      }
+      updateNotes(globalNote - 60, localNote);
+    }
   }
   encoderPos[selected] = encoderVal[selected];
 }
@@ -1186,16 +1335,8 @@ void updateOctaveFromFader(byte selected) {
     }
   }
   int octaveDelta = octave - previousOctave;
-  if (octaveDelta != 0) {
-    globalNoteOffset += octaveDelta * 12;
-    if (60 + globalNoteOffset < 0) {
-      globalNoteOffset = -60;
-    }
-    if (60 + globalNoteOffset > 127) {
-      globalNoteOffset = 67;
-    }
-  }
-  if (octaveDelta != 0 && selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+  bool hasLockedTarget = (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]);
+  if (octaveDelta != 0 && hasLockedTarget) {
     int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
     if (updatedNote < 0) {
       updatedNote = 0;
@@ -1204,6 +1345,15 @@ void updateOctaveFromFader(byte selected) {
       updatedNote = 127;
     }
     pushNote[selectedPushPin] = (byte) updatedNote;
+  }
+  else if (octaveDelta != 0) {
+    globalNoteOffset += octaveDelta * 12;
+    if (60 + globalNoteOffset < 0) {
+      globalNoteOffset = -60;
+    }
+    if (60 + globalNoteOffset > 127) {
+      globalNoteOffset = 67;
+    }
   }
   faderPos[selected] = faderVal[selected];
 
@@ -1462,16 +1612,8 @@ void moveOctave(bool up) {
   }
   display_iface::setColonOn(false);
   int octaveDelta = octave - previousOctave;
-  if (octaveDelta != 0) {
-    globalNoteOffset += octaveDelta * 12;
-    if (60 + globalNoteOffset < 0) {
-      globalNoteOffset = -60;
-    }
-    if (60 + globalNoteOffset > 127) {
-      globalNoteOffset = 67;
-    }
-  }
-  if (octaveDelta != 0 && selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+  bool hasLockedTarget = (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]);
+  if (octaveDelta != 0 && hasLockedTarget) {
     int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
     if (updatedNote < 0) {
       updatedNote = 0;
@@ -1480,6 +1622,15 @@ void moveOctave(bool up) {
       updatedNote = 127;
     }
     pushNote[selectedPushPin] = (byte) updatedNote;
+  }
+  else if (octaveDelta != 0) {
+    globalNoteOffset += octaveDelta * 12;
+    if (60 + globalNoteOffset < 0) {
+      globalNoteOffset = -60;
+    }
+    if (60 + globalNoteOffset > 127) {
+      globalNoteOffset = 67;
+    }
   }
 
   if (octaveDelta != 0) {
@@ -1826,26 +1977,31 @@ void panicAllNotesOff() {
 }
 
 void updatePadsLock(bool lock) {
+  bool anyChanged = false;
 
   for (byte p = 0; p < NB_PUSH; p++) {
 
     if (isPushed[p] == PUSHED) {
-      display_iface::clear();
       if (lock == false) {
-        pushSettingsLocked[p] = true;
-        char label[6];
-        snprintf(label, sizeof(label), "PAd%u", p + 1);
-        display_iface::print(label);
+        if (!pushSettingsLocked[p]) {
+          pushSettingsLocked[p] = true;
+          anyChanged = true;
+        }
+        queueLockFeedback(true, p);
       }
       else {
-        pushSettingsLocked[p] = false;
-        pushNote[p] = globalStartNote + p;
-        display_iface::print("GL0b");
+        if (pushSettingsLocked[p]) {
+          pushSettingsLocked[p] = false;
+          pushNote[p] = globalStartNote + p;
+          anyChanged = true;
+        }
+        queueLockFeedback(false, p);
       }
-      display_iface::setColonOn(false);
     }
   }
-  syncHeldPadsAfterNoteLayoutChange();
+  if (anyChanged) {
+    syncHeldPadsAfterNoteLayoutChange();
+  }
 }
 
 void updatePadsRepeatLockUnlock(bool isLocked) {
@@ -1892,6 +2048,53 @@ void updatePads() {
 
       if (activeMode != RuntimeMode::Cc || (rightPush == RELEASED && leftPush == RELEASED)) {
         pushedTime[p] = micros();
+        bool encoderPushActive = (leftPush == PUSHED || rightPush == PUSHED);
+        if (activeMode == RuntimeMode::Play && encoderPushActive) {
+          bool shouldLock = (rightPush == PUSHED && leftPush != PUSHED);
+          bool shouldUnlock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool changed = false;
+          if (shouldLock && !pushSettingsLocked[p]) {
+            pushSettingsLocked[p] = true;
+            changed = true;
+          }
+          else if (shouldUnlock && pushSettingsLocked[p]) {
+            pushSettingsLocked[p] = false;
+            resetPadToGlobalSettings(p);
+            changed = true;
+          }
+          if (shouldLock || shouldUnlock) {
+            queueLockFeedback(pushSettingsLocked[p], p);
+          }
+          if (changed) {
+            syncHeldPadsAfterNoteLayoutChange();
+          }
+        }
+        else if (activeMode == RuntimeMode::Repeat && encoderPushActive) {
+          bool shouldLock = (rightPush == PUSHED && leftPush != PUSHED);
+          bool shouldUnlock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool changed = false;
+          if (shouldLock && !repeatIsLocked[p]) {
+            resetPadRepeatToGlobal(p);
+            repeatIsLocked[p] = true;
+            changed = true;
+          }
+          else if (shouldUnlock && repeatIsLocked[p]) {
+            repeatIsLocked[p] = false;
+            resetPadRepeatToGlobal(p);
+            changed = true;
+          }
+          if (changed && !repeatIsLocked[p]) {
+            padScheduledOffMicros[p] = 0;
+            if (padNoteIsOn[p]) {
+              sendNote(padActiveNote[p], 0, false);
+              padNoteIsOn[p] = false;
+            }
+            resetArpState(p);
+          }
+          if (shouldLock || shouldUnlock) {
+            queueRepeatLockFeedback(repeatIsLocked[p], p);
+          }
+        }
         bool shouldPreviewPad =
           activeMode != RuntimeMode::Repeat
           && !((selectedArpType == ARP_TYPE_ORDER || selectedArpType == ARP_TYPE_ASSIGN)
@@ -1900,7 +2103,7 @@ void updatePads() {
         if (shouldPreviewPad && !padArpActive) {
           playPush(p, 1);
         }
-        if (leftPush == RELEASED && rightPush == RELEASED) {
+        if (leftPush == RELEASED && rightPush == RELEASED && !suppressPadNoteDisplay) {
           byte currentNote = 0;
           byte currentVelocity = 0;
           if (getPadPlaybackState(p, currentNote, currentVelocity)) {
@@ -1921,19 +2124,8 @@ void updatePads() {
         padPressOrder[p] = 0;
         resetArpState(p);
       }
-      if (selectedPushPin == p) {
-        selectedPushPin = -1;
-        unsigned long latestOrder = 0;
-        for (byte candidate = 0; candidate < NB_PUSH; candidate++) {
-          if (isPushed[candidate] != PUSHED) {
-            continue;
-          }
-          if (selectedPushPin == -1 || padPressOrder[candidate] > latestOrder) {
-            selectedPushPin = candidate;
-            latestOrder = padPressOrder[candidate];
-          }
-        }
-      }
+      // Keep selectedPushPin sticky after release.
+      // Selection changes only on the next pad press edge.
     }
   }
 }
@@ -2010,7 +2202,7 @@ void playPadsArp() {
 }
 
 float getRepeatSpeed(byte pin) {
-  byte currentRepeatSpeedDivisor = pushSettingsLocked[pin] ? pushRepeatSpeed[pin][1] : liveRepeatSpeedDivisor[pin];
+  byte currentRepeatSpeedDivisor = repeatIsLocked[pin] ? pushRepeatSpeed[pin][1] : liveRepeatSpeedDivisor[pin];
   return (float) 4 * ((float) 1 / (float) currentRepeatSpeedDivisor);
 }
 
@@ -2224,14 +2416,9 @@ void updateVelocityFromFader(byte selected) {
 }
 
 void updateArpRateFromEncoder(byte selected) {
-
-  if (aPadIsPushed()) {
-    return;
-  }
-
   bool changed = false;
   byte tmpRepeatSpeedDivisor = repeatSpeedDivisor;
-  if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
     tmpRepeatSpeedDivisor = pushRepeatSpeed[selectedPushPin][1];
   }
 
@@ -2245,16 +2432,15 @@ void updateArpRateFromEncoder(byte selected) {
     changed = true;
   }
   if (changed) {
-    if (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]) {
+    if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
       pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
       pendingRepeatSpeedDivisor[selectedPushPin] = tmpRepeatSpeedDivisor;
       pendingRepeatSpeedChange[selectedPushPin] = true;
-      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
     }
     else {
       repeatSpeedDivisor = tmpRepeatSpeedDivisor;
       for (byte pad = 0; pad < NB_PUSH; pad++) {
-        if (pushSettingsLocked[pad]) {
+        if (repeatIsLocked[pad]) {
           continue;
         }
         pendingRepeatSpeedDivisor[pad] = tmpRepeatSpeedDivisor;
