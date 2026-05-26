@@ -519,6 +519,7 @@ const char* const CHORD_NAMES[NB_CHORDS] PROGMEM = {
 
 // Scales
 const byte NB_SCALES PROGMEM = 10;
+const byte SCALE_INDEX_SEMI PROGMEM = 0;
 const byte SCALE_INDEX_DRUM PROGMEM = 8;
 byte selectedScale = 0;
 const char kScaleName0[] PROGMEM = "SEMI";
@@ -649,7 +650,7 @@ const char* modeLabel(RuntimeMode mode) {
     case RuntimeMode::Repeat:
       return "rEPEAt";
     case RuntimeMode::Ultrasonic:
-      return "ULtra SOnIc";
+      return "ULtrA SonIC";
     case RuntimeMode::Reset:
       return "rESEt";
   }
@@ -859,7 +860,7 @@ void appSetupImpl() {
   display_iface::init(display);
   display_iface::begin();
   if (bootPlaySwitchOn) {
-    display_iface::scrollingText("P0AH", 1);
+    display_iface::scrollingText("P0AH PLAY", 1);
   }
   else {
     display_iface::print("P0AH PLAY");
@@ -1030,6 +1031,9 @@ void updateChannelFromEncoder(byte selected) {
 }
 
 bool noteBelongsToCurrentScale(int noteValue) {
+  if (selectedScale == SCALE_INDEX_SEMI) {
+    return true;
+  }
   if (selectedScale == SCALE_INDEX_DRUM) {
     return true;
   }
@@ -1052,6 +1056,16 @@ bool noteBelongsToCurrentScale(int noteValue) {
 }
 
 int stepNoteInCurrentScale(int currentNote, int direction) {
+  if (selectedScale == SCALE_INDEX_SEMI) {
+    int directNote = currentNote + direction;
+    if (directNote < 0) {
+      return 0;
+    }
+    if (directNote > 127) {
+      return 127;
+    }
+    return directNote;
+  }
   if (selectedScale == SCALE_INDEX_DRUM) {
     int directNote = currentNote + direction;
     if (directNote < 0) {
