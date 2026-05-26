@@ -382,6 +382,7 @@ bool playFlag = false;
 unsigned long midiCLockTick = 0;
 unsigned long quarterNoteTime = 0;
 byte bpm = 120;
+int8_t repeatSwingOffset = 0;
 byte repeatSpeedDividend = 1;
 byte repeatSpeedDivisor = 4;
 byte globalStartNote = 48;
@@ -967,10 +968,10 @@ void appLoopImpl() {
   }
   else if (modeContext.repeatActive) {
     if (leftPush == PUSHED) {
-      updatePadsRepeatLockUnlock(false);
+      updateSwingFromEncoder(0);
     }
     if (rightPush == PUSHED) {
-      updatePadsRepeatLockUnlock(true);
+      updateBpmFromEncoder(1);
     }
   }
   else if (modeContext.ccActive) {
@@ -1969,8 +1970,11 @@ void playPadsArp() {
       }
       continue;
     }
+    unsigned long now = micros();
     unsigned long nextCap = getNextRepeatMicros(pin);
-    if (nextCap != 0 && micros() > nextCap) {
+    const byte MAX_CATCHUP_STEPS = 8;
+    byte catchupSteps = 0;
+    while (nextCap != 0 && (long) (now - nextCap) >= 0 && catchupSteps < MAX_CATCHUP_STEPS) {
       if (
         (activeMode == RuntimeMode::Repeat && isPushed[pin] == PUSHED) ||
         repeatIsLocked[pin] == true
@@ -1978,6 +1982,8 @@ void playPadsArp() {
         pushElapsedRepeats[pin]++;
         byte arpPad = getArpSourcePad(pin);
         if (arpPad == UNASSIGNED) {
+          nextCap = getNextRepeatMicros(pin);
+          catchupSteps++;
           continue;
         }
         byte currentNote = 0;
@@ -1985,15 +1991,20 @@ void playPadsArp() {
         if (getPadPlaybackState(arpPad, currentNote, currentVelocity)) {
           triggerPadRootNote(pin, currentNote, currentVelocity, true);
           // Create a real gate time for arp notes.
-          padScheduledOffMicros[pin] = micros() + getRepeatGateMicros(pin);
+          padScheduledOffMicros[pin] = now + getRepeatGateMicros(pin);
           if (pendingRepeatSpeedChange[pin]) {
             liveRepeatSpeedDivisor[pin] = pendingRepeatSpeedDivisor[pin];
             pendingRepeatSpeedChange[pin] = false;
             pendingRepeatSpeedDivisor[pin] = 0;
-            resetArpState(pin, micros());
+            resetArpState(pin, now);
+            nextCap = getNextRepeatMicros(pin);
+            catchupSteps++;
+            continue;
           }
         }
       }
+      nextCap = getNextRepeatMicros(pin);
+      catchupSteps++;
     }
   }
 }
@@ -2034,7 +2045,17 @@ unsigned long getNextNoteMicros() {
 unsigned long getNextRepeatMicros(int pin) {
   float pinRepeatSpeed = getRepeatSpeed(pin);
   unsigned long pushDuration = (float) getBeatMicros(1) * pinRepeatSpeed;
-  unsigned long nextTriggerTime = pushedTime[pin] + (pushElapsedRepeats[pin] * pushDuration);
+  unsigned long repeats = pushElapsedRepeats[pin];
+  unsigned long pairDuration = pushDuration * 2;
+  int swingPercent = 50 + (int) repeatSwingOffset;
+  unsigned long longInterval = (pairDuration * (unsigned long) swingPercent) / 100;
+
+  unsigned long elapsedMicros = (repeats / 2) * pairDuration;
+  if (repeats % 2 != 0) {
+    elapsedMicros += longInterval;
+  }
+
+  unsigned long nextTriggerTime = pushedTime[pin] + elapsedMicros;
   return nextTriggerTime;
 }
 
@@ -2055,11 +2076,14 @@ void updateBpm() {
     unsigned long bpmTime = micros();
     quarterNoteTime = bpmTime - quarterNoteTime;
     unsigned long newBpm = 60000000/quarterNoteTime;
-    if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm + 1)) {
+    if (bpm != newBpm && (bpm > newBpm + 1 || bpm < newBpm - 1)) {
+      byte previousBpm = bpm;
       bpm = newBpm;
       // displayPrintInt(bpm);
       oneNoteTime = getNoteMicros();
-      startTime = startTime * (bpm / newBpm);
+      if (newBpm != 0) {
+        startTime = (startTime * previousBpm) / newBpm;
+      }
       // @todo send stop play.
     }
     quarterNoteTime = bpmTime;
@@ -2243,6 +2267,63 @@ void updateArpRateFromEncoder(byte selected) {
     display_iface::print(label);
     display_iface::setColonOn(true);
   }
+}
+
+void updateBpmFromEncoder(byte selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  int delta = encoderVal[selected] - encoderPos[selected];
+  int nextBpm = (int) bpm + delta;
+  if (nextBpm < 30) {
+    nextBpm = 30;
+  }
+  if (nextBpm > 300) {
+    nextBpm = 300;
+  }
+
+  encoderPos[selected] = encoderVal[selected];
+  if ((byte) nextBpm == bpm) {
+    return;
+  }
+
+  bpm = (byte) nextBpm;
+  oneNoteTime = getNoteMicros();
+  resetAllArpStates(micros());
+
+  display_iface::clear();
+  char label[6];
+  snprintf(label, sizeof(label), "%ub", bpm);
+  display_iface::print(label);
+}
+
+void updateSwingFromEncoder(byte selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  int delta = encoderVal[selected] - encoderPos[selected];
+  int nextSwing = (int) repeatSwingOffset + delta;
+  if (nextSwing < -16) {
+    nextSwing = -16;
+  }
+  if (nextSwing > 16) {
+    nextSwing = 16;
+  }
+
+  encoderPos[selected] = encoderVal[selected];
+  if ((int8_t) nextSwing == repeatSwingOffset) {
+    return;
+  }
+
+  repeatSwingOffset = (int8_t) nextSwing;
+  resetAllArpStates(micros());
+
+  display_iface::clear();
+  char label[6];
+  snprintf(label, sizeof(label), "S%+d", repeatSwingOffset);
+  display_iface::print(label);
 }
 
 void updateUltrasonicCC(byte selected) {
