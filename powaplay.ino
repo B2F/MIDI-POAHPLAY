@@ -518,7 +518,7 @@ const char* const CHORD_NAMES[NB_CHORDS] PROGMEM = {
 };
 
 // Scales
-const byte NB_SCALES PROGMEM = 10;
+const byte NB_SCALES PROGMEM = 11;
 const byte SCALE_INDEX_SEMI PROGMEM = 0;
 const byte SCALE_INDEX_DRUM PROGMEM = 8;
 byte selectedScale = 0;
@@ -532,6 +532,7 @@ const char kScaleName6[] PROGMEM = "DOR ";
 const char kScaleName7[] PROGMEM = "JAPN";
 const char kScaleName8[] PROGMEM = "DRUM";
 const char kScaleName9[] PROGMEM = "MIX ";
+const char kScaleName10[] PROGMEM = "JAZZ";
 const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
   kScaleName0,
   kScaleName1,
@@ -542,7 +543,8 @@ const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
   kScaleName6,
   kScaleName7,
   kScaleName8,
-  kScaleName9
+  kScaleName9,
+  kScaleName10
 };
 const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 0, 0, 0, 0, 0, 0, 0},
@@ -555,6 +557,7 @@ const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 1, 5, 7, 8, 12, 13, 17}, // Japanese / In Sen style
   {0, 0, 2, 2, 5, 5, 7, 7}, // Drum-like clustered layout
   {0, 2, 4, 5, 7, 9, 10, 12}, // Mixolydian
+  {0, 2, 4, 5, 7, 9, 10, 11}, // Jazz (Bebop dominant)
 };
 // Melodics-compatible GM drum map:
 // KICK(36), SNARE(38), CHH(42), OHH(46), LOW TOM(41), MID TOM(45), CRASH(49), RIDE(51)

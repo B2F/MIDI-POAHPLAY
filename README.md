@@ -101,8 +101,8 @@ Per-mode behavior:
 * Global octave control from Fader 2, with note-layout updates applied live.
 * Chord engine with **14 chord types**:
   * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`, `d7`, `5th`, `Ad9`, `m7b6`
-* Scale engine with **10 scale layouts**:
-  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `
+* Scale engine with **11 scale layouts**:
+  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `, `JAZZ`
 * Chord, scale, and arp selectors wrap around instead of stopping at the ends.
 
 ### Arp / Gate
