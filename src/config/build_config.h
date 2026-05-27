@@ -62,14 +62,4 @@
 #define APP_MODE_SWITCH_USE_BASELINE 1
 #endif
 
-// Number of active mode switches required to trigger RESET on rising edge.
-// Valid range: 2..4 (SW_CC, SW_REPEAT, SW_ULTRASONIC, SW_PLAY).
-#ifndef APP_RESET_ACTIVE_SWITCH_COUNT
-#define APP_RESET_ACTIVE_SWITCH_COUNT 4
-#endif
-
-#if APP_RESET_ACTIVE_SWITCH_COUNT < 2 || APP_RESET_ACTIVE_SWITCH_COUNT > 4
-#error "APP_RESET_ACTIVE_SWITCH_COUNT must be between 2 and 4"
-#endif
-
 #endif

@@ -21,7 +21,6 @@ Quick controls overview:
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
 | `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Arp type select (CC lane 1 value if `SW_CC` ON) | Arp speed/divisor edit (CC lane 2 value if `SW_CC` ON) | Arp step number edit (`St2..St16`) (CC lane 1 selection + presets if `SW_CC` ON) | BPM edit (`###b`) (CC lane 2 selection + presets if `SW_CC` ON) |
 | `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 value if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 value if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 1 selection + presets if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 2 selection + presets if `SW_CC` ON) |
-| `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | no encoder-push rotation assignment | no encoder-push rotation assignment |
 
 Mode selection behavior:
 
@@ -30,11 +29,10 @@ Mode selection behavior:
 * `SW_REPEAT` ON edge selects `REPEAT` mode.
 * `SW_ULTRASONIC` ON edge selects `ULTRASONIC` mode.
 * `SW_PLAY` ON edge selects `PLAY` mode.
-* `RESET` triggers on the rising edge where the active mode-switch count reaches `APP_RESET_ACTIVE_SWITCH_COUNT`.
-* After RESET trigger, mode stays in `RESET` until a new mode-select ON edge occurs (`SW_CC`, `SW_REPEAT`, `SW_ULTRASONIC`, or `SW_PLAY`).
-* For non-RESET mode selection, latest ON edge wins.
+* For mode selection, latest ON edge wins.
+* Factory reset now triggers on a double encoder-push gesture (two encoder push rising edges inside a bounded interval).
 
-Right after activation, display shows one of:  `PLAY`, `CC`, `REPEAT`, `ULTRASONIC`, `RESET`.
+Right after activation, display shows one of:  `PLAY`, `CC`, `REPEAT`, `ULTRASONIC`.
 
 Mode transition display behavior:
 
@@ -42,7 +40,7 @@ Mode transition display behavior:
 * Mode-label scrolling is non-blocking and loop-driven: after 1500 ms idle it advances one frame every 120 ms while the main loop keeps running.
 * Scroll uses full mode labels and legacy-style framing (starts blank and ends blank).
 * If active interaction or any other display update occurs, pending/active mode scroll is canceled so control updates stay responsive.
-* RESET safety path is unchanged: threshold entry still triggers panic note-off and `reinit()`.
+* Factory reset gesture triggers panic note-off + `reinit()` and shows `FAC rESEt` confirmation.
 
 Per-mode behavior:
 
@@ -82,11 +80,10 @@ Per-mode behavior:
   * With **no encoder push held**, encoder 1 sets ultrasonic target CC number and encoder 2 sets max ultrasonic distance range.
   * Sensor sends continuous CC based on measured distance.
 
-* **RESET Mode (mode-switch threshold ON edge)**
-  * `reinit()` runs once when active mode switches reach the configured threshold.
-  * Panic safety is triggered on RESET entry (`All Notes Off` + `All Sound Off`) and local note state is cleared.
-  * No dedicated encoder-push + rotation edit assignment in RESET mode.
-  * RESET stays active until a new mode ON edge is received (`CC`, `REPEAT`, `ULTRASONIC`, or `PLAY`).
+* **Factory Reset Gesture (double encoder push)**
+  * `reinit()` runs when two encoder-push rising edges occur within the factory-reset interval.
+  * Panic safety is triggered on reset (`All Notes Off` + `All Sound Off`) and local note state is cleared.
+  * Successful gesture shows `FAC rESEt` as explicit confirmation feedback.
 
 * **DRUM scale note path**
   * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
@@ -150,7 +147,7 @@ Per-mode behavior:
 * Incoming MIDI clock drives arp timing when transport sync is active.
 * During synced arp playback, note-layout changes (for example octave, chord, scale, or lock-related changes) take effect on the next scheduled step instead of forcing an immediate base-note restart.
 * Tick-based tempo LED display (one LED at a time).
-* Panic on RESET entry edge (`All Notes Off` + `All Sound Off`) and local note state cleanup.
+* Panic + state cleanup on successful factory reset gesture (`All Notes Off` + `All Sound Off`).
 
 ### LED Behavior
 * 4 LEDs reflect pad columns when playing pads:
@@ -234,7 +231,6 @@ Set profile selectors in `platformio.ini` via `build_flags`.
 * `APP_WIRING_PROFILE_HEADER="wirings/nano_default.h"`
 * `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
 * `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_SERIAL`
-* `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
 `promicro16` uses a Pro Micro clone-safe wiring baseline with native USB MIDI:
 
@@ -242,7 +238,6 @@ Set profile selectors in `platformio.ini` via `build_flags`.
 * `APP_WIRING_PROFILE_HEADER="wirings/pro_micro_clone_safe.h"`
 * `APP_MAPPING_PROFILE=MAPPING_DEFAULT`
 * `APP_MIDI_TRANSPORT=MIDI_TRANSPORT_USB`
-* `APP_RESET_ACTIVE_SWITCH_COUNT=4`
 
 ### Local custom profiles (not versioned)
 
@@ -272,7 +267,6 @@ Minimal example (`src/config/build_config.local.h`):
 #define APP_WIRING_PROFILE_HEADER "local/local_profiles.h"
 #define APP_MAPPING_PROFILE MAPPING_LOCAL
 #define APP_MIDI_TRANSPORT MIDI_TRANSPORT_SERIAL
-#define APP_RESET_ACTIVE_SWITCH_COUNT 4
 
 #endif
 ```

@@ -170,7 +170,6 @@ enum class RuntimeMode : uint8_t {
   Cc,
   Repeat,
   Ultrasonic,
-  Reset,
 };
 
 struct InputState {
@@ -188,7 +187,6 @@ struct ModeContext {
   bool ccActive;
   bool repeatActive;
   bool ultrasonicActive;
-  bool resetActive;
   bool allowFreeEncoder;
 };
 
@@ -223,7 +221,6 @@ bool prevCcSwitchOn = false;
 bool prevRepeatSwitchOn = false;
 bool prevUltrasonicSwitchOn = false;
 bool prevPlaySwitchOn = false;
-bool prevResetSwitchThresholdReached = false;
 
 bool midiCCIsActive = false;
 bool ultrasonicSensorIsActive = false;
@@ -235,6 +232,9 @@ bool prevLeftPushActive = false;
 bool prevRightPushActive = false;
 bool leftPushRisingEdge = false;
 bool rightPushRisingEdge = false;
+bool resetGestureAwaitingSecondPush = false;
+unsigned long resetGestureFirstPushMs = 0;
+const unsigned long FACTORY_RESET_DOUBLE_PUSH_INTERVAL_MS = 600;
 
 bool isActiveLevel(byte rawValue, uint8_t activeLevel) {
   if (activeLevel == INPUT_ACTIVE_LOW) {
@@ -288,82 +288,34 @@ bool isEncoderPushActive(byte rawValue) {
 void reinit();
 
 ModeContext deriveModeContext(const InputState& input) {
-  uint8_t activeSwitchCount = 0;
-  if (input.cc) {
-    activeSwitchCount++;
-  }
-  if (input.repeat) {
-    activeSwitchCount++;
-  }
-  if (input.ultrasonic) {
-    activeSwitchCount++;
-  }
-  if (input.init) {
-    activeSwitchCount++;
-  }
-
-  bool resetSwitchThresholdReached = activeSwitchCount >= APP_RESET_ACTIVE_SWITCH_COUNT;
-  bool resetSwitchThresholdRising = resetSwitchThresholdReached && !prevResetSwitchThresholdReached;
-
   bool ccRising = input.cc && !prevCcSwitchOn;
   bool repeatRising = input.repeat && !prevRepeatSwitchOn;
   bool ultrasonicRising = input.ultrasonic && !prevUltrasonicSwitchOn;
   bool playRising = input.init && !prevPlaySwitchOn;
 
-  if (resetSwitchThresholdRising) {
-    panicAllNotesOff();
-    reinit();
-    selectedMode = RuntimeMode::Reset;
-    activeMode = RuntimeMode::Reset;
+  if (ccRising) {
+    selectedMode = RuntimeMode::Cc;
     forceModeLabelDisplay = true;
   }
-  else {
-    if (selectedMode == RuntimeMode::Reset) {
-      if (ccRising) {
-        selectedMode = RuntimeMode::Cc;
-        forceModeLabelDisplay = true;
-      }
-      else if (repeatRising) {
-        selectedMode = RuntimeMode::Repeat;
-        forceModeLabelDisplay = true;
-      }
-      else if (ultrasonicRising) {
-        selectedMode = RuntimeMode::Ultrasonic;
-        forceModeLabelDisplay = true;
-      }
-      else if (playRising) {
-        selectedMode = RuntimeMode::Play;
-        forceModeLabelDisplay = true;
-      }
-      activeMode = selectedMode;
-    }
-    else {
-      if (ccRising) {
-        selectedMode = RuntimeMode::Cc;
-        forceModeLabelDisplay = true;
-      }
-      if (repeatRising) {
-        selectedMode = RuntimeMode::Repeat;
-        forceModeLabelDisplay = true;
-      }
-      if (ultrasonicRising) {
-        selectedMode = RuntimeMode::Ultrasonic;
-        forceModeLabelDisplay = true;
-      }
-      if (playRising) {
-        selectedMode = RuntimeMode::Play;
-        forceModeLabelDisplay = true;
-      }
-
-      activeMode = selectedMode;
-    }
+  if (repeatRising) {
+    selectedMode = RuntimeMode::Repeat;
+    forceModeLabelDisplay = true;
   }
+  if (ultrasonicRising) {
+    selectedMode = RuntimeMode::Ultrasonic;
+    forceModeLabelDisplay = true;
+  }
+  if (playRising) {
+    selectedMode = RuntimeMode::Play;
+    forceModeLabelDisplay = true;
+  }
+
+  activeMode = selectedMode;
 
   prevCcSwitchOn = input.cc;
   prevRepeatSwitchOn = input.repeat;
   prevUltrasonicSwitchOn = input.ultrasonic;
   prevPlaySwitchOn = input.init;
-  prevResetSwitchThresholdReached = resetSwitchThresholdReached;
 
   ModeContext context = {
     activeMode,
@@ -371,11 +323,31 @@ ModeContext deriveModeContext(const InputState& input) {
     activeMode == RuntimeMode::Cc,
     activeMode == RuntimeMode::Repeat,
     activeMode == RuntimeMode::Ultrasonic,
-    activeMode == RuntimeMode::Reset,
     false,
   };
   context.allowFreeEncoder = !context.anyEncoderPush;
   return context;
+}
+
+bool consumeFactoryResetDoublePushGesture(bool leftRising, bool rightRising, unsigned long nowMs) {
+  bool pushRising = leftRising || rightRising;
+
+  if (resetGestureAwaitingSecondPush && (nowMs - resetGestureFirstPushMs > FACTORY_RESET_DOUBLE_PUSH_INTERVAL_MS)) {
+    resetGestureAwaitingSecondPush = false;
+  }
+
+  if (!pushRising) {
+    return false;
+  }
+
+  if (resetGestureAwaitingSecondPush) {
+    resetGestureAwaitingSecondPush = false;
+    return true;
+  }
+
+  resetGestureAwaitingSecondPush = true;
+  resetGestureFirstPushMs = nowMs;
+  return false;
 }
 
 // MIDI
@@ -676,8 +648,6 @@ const char* modeLabel(RuntimeMode mode) {
       return "rEPEAt";
     case RuntimeMode::Ultrasonic:
       return "ULtrA SonIC";
-    case RuntimeMode::Reset:
-      return "rESEt";
   }
   return "PLAy";
 }
@@ -747,6 +717,13 @@ void queueRepeatLockFeedback(bool isLocked, byte pad) {
   modeScrollPending = false;
   display_iface::cancelScroll(modeScrollState);
   display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
+  lockFeedbackBaselineMutation = display_iface::getMutationCounter();
+}
+
+void queueResetFeedback() {
+  modeScrollPending = false;
+  display_iface::cancelScroll(modeScrollState);
+  display_iface::startScroll(lockFeedbackScrollState, "rEsEt", MODE_SCROLL_STEP_MS);
   lockFeedbackBaselineMutation = display_iface::getMutationCounter();
 }
 
@@ -868,6 +845,8 @@ void reinit() {
   prevRightPushActive = false;
   leftPushRisingEdge = false;
   rightPushRisingEdge = false;
+  resetGestureAwaitingSecondPush = false;
+  resetGestureFirstPushMs = 0;
   display_iface::cancelScroll(lockFeedbackScrollState);
   lockFeedbackBaselineMutation = 0;
   selectedMode = RuntimeMode::Play;
@@ -1021,6 +1000,14 @@ void appLoopImpl() {
   rightPushRisingEdge = rightPushActive && !prevRightPushActive;
   prevLeftPushActive = leftPushActive;
   prevRightPushActive = rightPushActive;
+
+  if (consumeFactoryResetDoublePushGesture(leftPushRisingEdge, rightPushRisingEdge, millis())) {
+    panicAllNotesOff();
+    reinit();
+    queueResetFeedback();
+    return;
+  }
+
   bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
 
   for (byte pos = 0; pos < NB_FADERS; pos++) {
