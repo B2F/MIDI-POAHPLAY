@@ -111,6 +111,7 @@ const uint16_t FADER_THRESHOLD = kSelectedMappingProfile.faderThreshold;
 const uint16_t FADER_DEADBAND = kSelectedMappingProfile.faderDeadband;
 const uint16_t FADER_EMA_ALPHA_PERMILLE = kSelectedMappingProfile.faderEmaAlphaPermille;
 const unsigned long FADER_CC_MIN_UPDATE_INTERVAL_US = kSelectedMappingProfile.faderCcMinUpdateIntervalUs;
+const unsigned long PAD_DEBOUNCE_US = kSelectedMappingProfile.padDebounceUs;
 hardware_cleanup::AnalogState faderCleanupState[NB_FADERS] = {
   hardware_cleanup::makeAnalogState(),
   hardware_cleanup::makeAnalogState()
@@ -486,6 +487,16 @@ byte isPushed[NB_PUSH] = {
   RELEASED,
   RELEASED,
   RELEASED
+};
+hardware_cleanup::DigitalDebounceState padDebounceState[NB_PUSH] = {
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState(),
+  hardware_cleanup::makeDigitalDebounceState()
 };
 unsigned long pushedTime[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
@@ -899,6 +910,7 @@ void reinit() {
   }
   for (byte i = 0; i < 8; i++) {
     isPushed[i] = RELEASED;
+    padDebounceState[i] = hardware_cleanup::makeDigitalDebounceState();
   }
   for (byte i = 0; i < 8; i++) {
     repeatIsLocked[i] = false;
@@ -2055,7 +2067,15 @@ void updatePads() {
 
   for (byte p = 0; p < NB_PUSH; p++) {
 
-    byte sensorVal = readDigitalSignalStable(pushPin[p]);
+    byte sensorRaw = readDigitalSignalStable(pushPin[p]);
+    bool sensorActive = (sensorRaw == PUSHED);
+    bool sensorDebouncedActive = hardware_cleanup::debounceDigital(
+      sensorActive,
+      micros(),
+      PAD_DEBOUNCE_US,
+      padDebounceState[p]
+    );
+    byte sensorVal = sensorDebouncedActive ? PUSHED : RELEASED;
 
     if (sensorVal == PUSHED && isPushed[p] == RELEASED) {
       byte orderedAnchorBeforePress = UNASSIGNED;

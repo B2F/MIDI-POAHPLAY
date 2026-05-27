@@ -26,6 +26,7 @@ static constexpr MappingProfile kDefaultMapping = {
   2,    // faderDeadband
   450,  // faderEmaAlphaPermille
   12000, // faderCcMinUpdateIntervalUs
+  3000, // padDebounceUs
   2,    // minUltrasonicDistanceCm
   10,   // defaultUltrasonicMaxDistanceCm
   35,   // maxUltrasonicDistanceCapCm

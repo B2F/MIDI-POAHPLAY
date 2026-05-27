@@ -236,6 +236,7 @@ struct MappingProfile {
   uint16_t faderDeadband;
   uint16_t faderEmaAlphaPermille;
   uint32_t faderCcMinUpdateIntervalUs;
+  uint32_t padDebounceUs;
   uint8_t minUltrasonicDistanceCm;
   int16_t defaultUltrasonicMaxDistanceCm;
   uint8_t maxUltrasonicDistanceCapCm;

@@ -15,8 +15,9 @@
 - [x] 3.2 Wire left-push repeat edit to arp step number display/control (`St2..St16`).
 - [x] 3.3 Ensure step-number edits immediately affect subsequent arp note selection.
 - [x] 3.4 Keep NOTE arp behavior unchanged when step number is edited.
+- [x] 3.5 Ensure repeat unlock resets pad-local repeat settings (arp, speed, step) back to current global settings.
 
 ## 4. Verification and Cleanup
 
-- [ ] 4.1 Manual device verification: step `2`, `8`, `9`, and `16` produce expected traversal and octave rollover.
+- [x] 4.1 Manual device verification: step `2`, `8`, `9`, and `16` produce expected traversal and octave rollover.
 - [x] 4.4 Remove dead swing-related code paths and update any relevant developer docs.
