@@ -450,6 +450,8 @@ byte pushNote[NB_PUSH];
 byte pushVelocity[NB_PUSH] = {100, 100, 100, 100, 100, 100, 100, 100};
 bool pushSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 byte pushRepeatSpeed[NB_PUSH][2] = {{1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}, {1,4}};
+byte pushRepeatArpType[NB_PUSH] = {ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE, ARP_TYPE_SINGLE_NOTE};
+byte pushRepeatStepNumber[NB_PUSH] = {8,8,8,8,8,8,8,8};
 byte liveRepeatSpeedDivisor[NB_PUSH] = {4,4,4,4,4,4,4,4};
 byte pendingRepeatSpeedDivisor[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool pendingRepeatSpeedChange[NB_PUSH] = {false,false,false,false,false,false,false,false};
@@ -603,7 +605,7 @@ bool isPadArpActive(byte pin);
 void syncHeldPadsAfterNoteLayoutChange();
 bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity);
 bool triggerPadRootNote(byte sourcePad, byte note, byte velocity, bool state);
-byte getArpSourcePad(byte sourcePad);
+byte getArpSourcePad(byte sourcePad, byte arpType);
 byte getOrderedArpAnchorPad();
 void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos);
 void buildOrderedActivePads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos, bool pinStart);
@@ -746,15 +748,18 @@ void updateHeldPadsRepeatLock(bool isLocked) {
       resetPadRepeatToGlobal(p);
       repeatIsLocked[p] = true;
     }
-    else if (!isLocked && repeatIsLocked[p]) {
+    else if (!isLocked) {
+      bool wasLocked = repeatIsLocked[p];
       repeatIsLocked[p] = false;
       resetPadRepeatToGlobal(p);
-      padScheduledOffMicros[p] = 0;
-      if (padNoteIsOn[p]) {
-        sendNote(padActiveNote[p], 0, false);
-        padNoteIsOn[p] = false;
+      if (wasLocked) {
+        padScheduledOffMicros[p] = 0;
+        if (padNoteIsOn[p]) {
+          sendNote(padActiveNote[p], 0, false);
+          padNoteIsOn[p] = false;
+        }
+        resetArpState(p);
       }
-      resetArpState(p);
     }
     queueRepeatLockFeedback(repeatIsLocked[p], p);
   }
@@ -795,6 +800,8 @@ void resetPadToGlobalSettings(byte pad) {
 void resetPadRepeatToGlobal(byte pad) {
   pushRepeatSpeed[pad][0] = 1;
   pushRepeatSpeed[pad][1] = repeatSpeedDivisor;
+  pushRepeatArpType[pad] = selectedArpType;
+  pushRepeatStepNumber[pad] = repeatArpStepNumber;
   pendingRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
   pendingRepeatSpeedChange[pad] = false;
   liveRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
@@ -870,6 +877,8 @@ void reinit() {
   for (byte i = 0; i < 8; i++) {
     pushRepeatSpeed[i][0] = 1;
     pushRepeatSpeed[i][1] = 4;
+    pushRepeatArpType[i] = ARP_TYPE_SINGLE_NOTE;
+    pushRepeatStepNumber[i] = 8;
     liveRepeatSpeedDivisor[i] = 4;
     pendingRepeatSpeedDivisor[i] = 0;
     pendingRepeatSpeedChange[i] = false;
@@ -1297,14 +1306,23 @@ void arpSelect(byte selected) {
   }
 
   int delta = encoderVal[selected] - encoderPos[selected];
-  int wrappedArpType = ((int) selectedArpType + delta) % NB_ARP_TYPES;
+  byte currentArpType = selectedArpType;
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+    currentArpType = pushRepeatArpType[selectedPushPin];
+  }
+  int wrappedArpType = ((int) currentArpType + delta) % NB_ARP_TYPES;
   if (wrappedArpType < 0) {
     wrappedArpType += NB_ARP_TYPES;
   }
-  selectedArpType = wrappedArpType;
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+    pushRepeatArpType[selectedPushPin] = wrappedArpType;
+  }
+  else {
+    selectedArpType = wrappedArpType;
+  }
 
   display_iface::clear();
-  printProgmemLabel(ARP_NAMES, selectedArpType);
+  printProgmemLabel(ARP_NAMES, wrappedArpType);
   display_iface::setColonOn(false);
   encoderPos[selected] = encoderVal[selected];
   resetAllArpStates();
@@ -1687,7 +1705,8 @@ void resetArpState(byte pin, unsigned long referenceTime) {
   pushElapsedRepeats[pin] = 0;
   arpStepProgress[pin] = 0;
   arpSlotIndex[pin] = UNASSIGNED;
-  arpDirection[pin] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+  byte effectiveArpType = repeatIsLocked[pin] ? pushRepeatArpType[pin] : selectedArpType;
+  arpDirection[pin] = (effectiveArpType == ARP_TYPE_DOWN || effectiveArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
   arpLastRandomIndex[pin] = UNASSIGNED;
   arpShuffleCount[pin] = 0;
 }
@@ -1779,14 +1798,14 @@ bool triggerPadRootNote(byte sourcePad, byte note, byte velocity, bool state) {
   return true;
 }
 
-byte getArpSourcePad(byte sourcePad) {
+byte getArpSourcePad(byte sourcePad, byte arpType) {
   byte arpPads[MAX_NOTES];
   byte validCount = 0;
   byte startPos = 0;
-  if (selectedArpType == ARP_TYPE_ORDER) {
+  if (arpType == ARP_TYPE_ORDER) {
     buildOrderedActivePads(sourcePad, arpPads, validCount, startPos, true);
   }
-  else if (selectedArpType == ARP_TYPE_ASSIGN) {
+  else if (arpType == ARP_TYPE_ASSIGN) {
     buildOrderedActivePads(sourcePad, arpPads, validCount, startPos, false);
   }
   else {
@@ -1796,28 +1815,28 @@ byte getArpSourcePad(byte sourcePad) {
     return UNASSIGNED;
   }
 
-  if (selectedArpType == ARP_TYPE_SINGLE_NOTE || validCount < 2) {
+  if (arpType == ARP_TYPE_SINGLE_NOTE || validCount < 2) {
     return arpPads[startPos];
   }
 
   if (arpSlotIndex[sourcePad] == UNASSIGNED || arpSlotIndex[sourcePad] >= validCount) {
     arpSlotIndex[sourcePad] = startPos;
-    arpDirection[sourcePad] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+    arpDirection[sourcePad] = (arpType == ARP_TYPE_DOWN || arpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
   }
 
   byte currentPos = arpSlotIndex[sourcePad];
   byte chosenPad = arpPads[currentPos];
 
-  if (selectedArpType == ARP_TYPE_UP) {
+  if (arpType == ARP_TYPE_UP) {
     arpSlotIndex[sourcePad] = (currentPos + 1) % validCount;
   }
-  else if (selectedArpType == ARP_TYPE_DOWN) {
+  else if (arpType == ARP_TYPE_DOWN) {
     arpSlotIndex[sourcePad] = (currentPos == 0) ? validCount - 1 : currentPos - 1;
   }
-  else if (selectedArpType == ARP_TYPE_RANDOM) {
+  else if (arpType == ARP_TYPE_RANDOM) {
     chosenPad = arpPads[random(validCount)];
   }
-  else if (selectedArpType == ARP_TYPE_RANDOM_NOREPEAT) {
+  else if (arpType == ARP_TYPE_RANDOM_NOREPEAT) {
     byte randomPos = random(validCount);
     if (validCount > 1 && arpLastRandomIndex[sourcePad] != UNASSIGNED && randomPos == arpLastRandomIndex[sourcePad]) {
       randomPos = (randomPos + 1 + random(validCount - 1)) % validCount;
@@ -1825,7 +1844,7 @@ byte getArpSourcePad(byte sourcePad) {
     arpLastRandomIndex[sourcePad] = randomPos;
     chosenPad = arpPads[randomPos];
   }
-  else if (selectedArpType == ARP_TYPE_SHUFFLE) {
+  else if (arpType == ARP_TYPE_SHUFFLE) {
     if (arpShuffleCount[sourcePad] != validCount || arpSlotIndex[sourcePad] == UNASSIGNED) {
       for (byte i = 0; i < validCount; i++) {
         arpShuffleOrder[sourcePad][i] = i;
@@ -1845,7 +1864,7 @@ byte getArpSourcePad(byte sourcePad) {
       arpSlotIndex[sourcePad] = UNASSIGNED;
     }
   }
-  else if (selectedArpType == ARP_TYPE_CONVERGE) {
+  else if (arpType == ARP_TYPE_CONVERGE) {
     byte convergeStep = currentPos;
     byte leftIndex = convergeStep / 2;
     byte rightIndex = validCount - 1 - leftIndex;
@@ -2076,17 +2095,19 @@ void updatePads() {
           bool shouldLock = (rightPush == PUSHED && leftPush != PUSHED);
           bool shouldUnlock = (leftPush == PUSHED && rightPush != PUSHED);
           bool changed = false;
+          bool unlockedNow = false;
           if (shouldLock && !repeatIsLocked[p]) {
             resetPadRepeatToGlobal(p);
             repeatIsLocked[p] = true;
             changed = true;
           }
-          else if (shouldUnlock && repeatIsLocked[p]) {
+          else if (shouldUnlock) {
+            unlockedNow = repeatIsLocked[p];
             repeatIsLocked[p] = false;
             resetPadRepeatToGlobal(p);
-            changed = true;
+            changed = changed || unlockedNow;
           }
-          if (changed && !repeatIsLocked[p]) {
+          if ((changed || unlockedNow) && !repeatIsLocked[p]) {
             padScheduledOffMicros[p] = 0;
             if (padNoteIsOn[p]) {
               sendNote(padActiveNote[p], 0, false);
@@ -2175,7 +2196,8 @@ void playPadsArp() {
         repeatIsLocked[pin] == true
       ) {
         pushElapsedRepeats[pin]++;
-        byte arpPad = getArpSourcePad(pin);
+        byte effectiveArpType = repeatIsLocked[pin] ? pushRepeatArpType[pin] : selectedArpType;
+        byte arpPad = getArpSourcePad(pin, effectiveArpType);
         if (arpPad == UNASSIGNED) {
           nextCap = getNextRepeatMicros(pin);
           catchupSteps++;
@@ -2185,7 +2207,7 @@ void playPadsArp() {
         byte currentNote = 0;
         byte currentVelocity = 0;
         if (getPadPlaybackState(arpPad, currentNote, currentVelocity)) {
-          byte stepCount = repeatArpStepNumber;
+          byte stepCount = repeatIsLocked[pin] ? pushRepeatStepNumber[pin] : repeatArpStepNumber;
           byte stepProgress = arpStepProgress[pin];
           byte octaveLayer = (stepCount > MAX_NOTES) ? (stepProgress / MAX_NOTES) : 0;
           int steppedNote = (int) currentNote + ((int) octaveLayer * 12);
@@ -2194,14 +2216,14 @@ void playPadsArp() {
           }
           triggerPadRootNote(pin, (byte) steppedNote, currentVelocity, true);
           stepProgress++;
-          if (selectedArpType == ARP_TYPE_SINGLE_NOTE) {
+          if (effectiveArpType == ARP_TYPE_SINGLE_NOTE) {
             stepProgress = 0;
           }
           else if (stepProgress >= stepCount) {
             stepProgress = 0;
             arpStepProgress[pin] = 0;
             arpSlotIndex[pin] = UNASSIGNED;
-            arpDirection[pin] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+            arpDirection[pin] = (effectiveArpType == ARP_TYPE_DOWN || effectiveArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
             arpLastRandomIndex[pin] = UNASSIGNED;
             arpShuffleCount[pin] = 0;
           }
@@ -2509,7 +2531,11 @@ void updateArpStepNumberFromEncoder(byte selected) {
   }
 
   int delta = encoderVal[selected] - encoderPos[selected];
-  int nextStep = (int) repeatArpStepNumber + delta;
+  byte currentStep = repeatArpStepNumber;
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+    currentStep = pushRepeatStepNumber[selectedPushPin];
+  }
+  int nextStep = (int) currentStep + delta;
   if (nextStep < 2) {
     nextStep = 2;
   }
@@ -2518,16 +2544,21 @@ void updateArpStepNumberFromEncoder(byte selected) {
   }
 
   encoderPos[selected] = encoderVal[selected];
-  if ((byte) nextStep == repeatArpStepNumber) {
+  if ((byte) nextStep == currentStep) {
     return;
   }
 
-  repeatArpStepNumber = (byte) nextStep;
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+    pushRepeatStepNumber[selectedPushPin] = (byte) nextStep;
+  }
+  else {
+    repeatArpStepNumber = (byte) nextStep;
+  }
   resetAllArpStates(micros());
 
   display_iface::clear();
   char label[6];
-  snprintf(label, sizeof(label), "St%u", repeatArpStepNumber);
+  snprintf(label, sizeof(label), "St%u", (byte) nextStep);
   display_iface::print(label);
 }
 
