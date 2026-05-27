@@ -19,7 +19,7 @@ Quick controls overview:
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `PLAY` (SW_PLAY) | Velocity | Octave | MIDI channel (`CH1..CH16`) | Base note / transpose reference | Scale select + play-mode pad settings lock workflow | Chord select + play-mode pad settings unlock workflow |
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection + pad presets lane 1 | CC lane 2 selection + pad presets lane 2 |
-| `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Arp type select (CC lane 1 value if `SW_CC` ON) | Arp speed/divisor edit (CC lane 2 value if `SW_CC` ON) | Swing edit (`S+/-n`) (CC lane 1 selection + presets if `SW_CC` ON) | BPM edit (`###b`) (CC lane 2 selection + presets if `SW_CC` ON) |
+| `REPEAT` (SW_REPEAT) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Arp type select (CC lane 1 value if `SW_CC` ON) | Arp speed/divisor edit (CC lane 2 value if `SW_CC` ON) | Arp step number edit (`St2..St16`) (CC lane 1 selection + presets if `SW_CC` ON) | BPM edit (`###b`) (CC lane 2 selection + presets if `SW_CC` ON) |
 | `ULTRASONIC` (SW_ULTRASONIC) | Velocity (CC lane 1 value if `SW_CC` ON) | Octave (CC lane 2 value if `SW_CC` ON) | Ultrasonic target CC select (CC lane 1 value if `SW_CC` ON) | Ultrasonic max distance edit (CC lane 2 value if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 1 selection + presets if `SW_CC` ON) | no dedicated push-turn assignment (CC lane 2 selection + presets if `SW_CC` ON) |
 | `RESET` (configurable threshold: 2..4 active mode switches) | PLAY | PLAY | PLAY | PLAY | no encoder-push rotation assignment | no encoder-push rotation assignment |
 
@@ -68,7 +68,7 @@ Per-mode behavior:
 * **REP Mode (`SW_REPEAT` switch)**
   * With **no encoder push held**, encoder 1 selects arp type and encoder 2 edits arp rate/divisor.
   * If `SW_CC` is ON while in REPEAT mode, faders and encoders use CC behavior.
-  * Left encoder push: swing edit (centered bipolar offset).
+  * Left encoder push: arp step number edit (`St2..St16`).
   * Right encoder push: BPM edit.
   * Repeat lock workflows (`repeatIsLocked`):
     * Right push + pad press, or hold pad then right push -> lock pad repeat settings.

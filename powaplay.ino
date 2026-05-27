@@ -389,7 +389,7 @@ bool playFlag = false;
 unsigned long midiCLockTick = 0;
 unsigned long quarterNoteTime = 0;
 byte bpm = 120;
-int8_t repeatSwingOffset = 0;
+byte repeatArpStepNumber = 8;
 byte repeatSpeedDividend = 1;
 byte repeatSpeedDivisor = 4;
 byte globalStartNote = 48;
@@ -460,6 +460,7 @@ bool padNoteIsOn[NB_PUSH] = {false,false,false,false,false,false,false,false};
 unsigned long padScheduledOffMicros[NB_PUSH] = {0,0,0,0,0,0,0,0};
 // Nb elapsed arp timeframes since last start time.
 unsigned long pushElapsedRepeats[NB_PUSH] = {0, 0, 0, 0, 0, 0, 0, 0};
+byte arpStepProgress[NB_PUSH] = {0,0,0,0,0,0,0,0};
 byte arpSlotIndex[NB_PUSH] = {255,255,255,255,255,255,255,255};
 int arpDirection[NB_PUSH] = {1,1,1,1,1,1,1,1};
 byte arpLastRandomIndex[NB_PUSH] = {255,255,255,255,255,255,255,255};
@@ -856,6 +857,7 @@ void reinit() {
   previousDisplayedMode = RuntimeMode::Play;
   repeatSpeedDividend = 1;
   repeatSpeedDivisor = 4;
+  repeatArpStepNumber = 8;
   globalStartNote = 48;
 
   for (byte i = 0; i < 8; i++) {
@@ -1097,7 +1099,7 @@ void appLoopImpl() {
         updateHeldPadsRepeatLock(false);
       }
       else {
-        updateSwingFromEncoder(0);
+        updateArpStepNumberFromEncoder(0);
       }
     }
     if (rightPush == PUSHED) {
@@ -1683,6 +1685,7 @@ void resetArpState(byte pin, unsigned long referenceTime) {
   }
   pushedTime[pin] = referenceTime;
   pushElapsedRepeats[pin] = 0;
+  arpStepProgress[pin] = 0;
   arpSlotIndex[pin] = UNASSIGNED;
   arpDirection[pin] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
   arpLastRandomIndex[pin] = UNASSIGNED;
@@ -2178,10 +2181,33 @@ void playPadsArp() {
           catchupSteps++;
           continue;
         }
+
         byte currentNote = 0;
         byte currentVelocity = 0;
         if (getPadPlaybackState(arpPad, currentNote, currentVelocity)) {
-          triggerPadRootNote(pin, currentNote, currentVelocity, true);
+          byte stepCount = repeatArpStepNumber;
+          byte stepProgress = arpStepProgress[pin];
+          byte octaveLayer = (stepCount > MAX_NOTES) ? (stepProgress / MAX_NOTES) : 0;
+          int steppedNote = (int) currentNote + ((int) octaveLayer * 12);
+          if (steppedNote > 127) {
+            steppedNote = 127;
+          }
+          triggerPadRootNote(pin, (byte) steppedNote, currentVelocity, true);
+          stepProgress++;
+          if (selectedArpType == ARP_TYPE_SINGLE_NOTE) {
+            stepProgress = 0;
+          }
+          else if (stepProgress >= stepCount) {
+            stepProgress = 0;
+            arpStepProgress[pin] = 0;
+            arpSlotIndex[pin] = UNASSIGNED;
+            arpDirection[pin] = (selectedArpType == ARP_TYPE_DOWN || selectedArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
+            arpLastRandomIndex[pin] = UNASSIGNED;
+            arpShuffleCount[pin] = 0;
+          }
+          else {
+            arpStepProgress[pin] = stepProgress;
+          }
           // Create a real gate time for arp notes.
           padScheduledOffMicros[pin] = now + getRepeatGateMicros(pin);
           if (pendingRepeatSpeedChange[pin]) {
@@ -2238,14 +2264,7 @@ unsigned long getNextRepeatMicros(int pin) {
   float pinRepeatSpeed = getRepeatSpeed(pin);
   unsigned long pushDuration = (float) getBeatMicros(1) * pinRepeatSpeed;
   unsigned long repeats = pushElapsedRepeats[pin];
-  unsigned long pairDuration = pushDuration * 2;
-  int swingPercent = 50 + (int) repeatSwingOffset;
-  unsigned long longInterval = (pairDuration * (unsigned long) swingPercent) / 100;
-
-  unsigned long elapsedMicros = (repeats / 2) * pairDuration;
-  if (repeats % 2 != 0) {
-    elapsedMicros += longInterval;
-  }
+  unsigned long elapsedMicros = repeats * pushDuration;
 
   unsigned long nextTriggerTime = pushedTime[pin] + elapsedMicros;
   return nextTriggerTime;
@@ -2484,31 +2503,31 @@ void updateBpmFromEncoder(byte selected) {
   display_iface::print(label);
 }
 
-void updateSwingFromEncoder(byte selected) {
+void updateArpStepNumberFromEncoder(byte selected) {
   if (encoderVal[selected] == encoderPos[selected]) {
     return;
   }
 
   int delta = encoderVal[selected] - encoderPos[selected];
-  int nextSwing = (int) repeatSwingOffset + delta;
-  if (nextSwing < -16) {
-    nextSwing = -16;
+  int nextStep = (int) repeatArpStepNumber + delta;
+  if (nextStep < 2) {
+    nextStep = 2;
   }
-  if (nextSwing > 16) {
-    nextSwing = 16;
+  if (nextStep > 16) {
+    nextStep = 16;
   }
 
   encoderPos[selected] = encoderVal[selected];
-  if ((int8_t) nextSwing == repeatSwingOffset) {
+  if ((byte) nextStep == repeatArpStepNumber) {
     return;
   }
 
-  repeatSwingOffset = (int8_t) nextSwing;
+  repeatArpStepNumber = (byte) nextStep;
   resetAllArpStates(micros());
 
   display_iface::clear();
   char label[6];
-  snprintf(label, sizeof(label), "S%+d", repeatSwingOffset);
+  snprintf(label, sizeof(label), "St%u", repeatArpStepNumber);
   display_iface::print(label);
 }
 
