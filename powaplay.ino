@@ -713,7 +713,7 @@ void queueLockFeedback(bool isLocked, byte pad) {
 
 void queueRepeatLockFeedback(bool isLocked, byte pad) {
   char label[24];
-  snprintf(label, sizeof(label), "%s P%u REP", isLocked ? "LOC" : "ULOC", pad + 1);
+  snprintf(label, sizeof(label), "%s P%u rEP", isLocked ? "LOC" : "ULOC", pad + 1);
   modeScrollPending = false;
   display_iface::cancelScroll(modeScrollState);
   display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
@@ -1008,8 +1008,6 @@ void appLoopImpl() {
     return;
   }
 
-  bool ccOverlayInSpecialMode = currentInputState.cc && (modeContext.repeatActive || modeContext.ultrasonicActive);
-
   for (byte pos = 0; pos < NB_FADERS; pos++) {
     faderVal[pos] = readFader(pos);
   }
@@ -1056,7 +1054,7 @@ void appLoopImpl() {
   tickLockFeedback(modeDisplaySuppressed);
 
   // Encoders et faders (sans encoder push)
-  if (modeContext.ccActive || ccOverlayInSpecialMode) {
+  if (modeContext.ccActive) {
     updateCCValueFromFader(0);
     updateCCValueFromFader(1);
 
@@ -1068,12 +1066,18 @@ void appLoopImpl() {
     }
   }
   else {
-    updateVelocityFromFader(0);
-    updateOctaveFromFader(1);
+    if (modeContext.ultrasonicActive) {
+      updateCCValueFromFader(0);
+      updateCCValueFromFader(1);
+    }
+    else {
+      updateVelocityFromFader(0);
+      updateOctaveFromFader(1);
+    }
 
     if (modeContext.allowFreeEncoder) {
       if (modeContext.activeMode == RuntimeMode::Play) {
-        updateChannelFromEncoder(0);
+        scaleSelect(0);
         updateBaseNoteFromEncoder(1);
       }
       else if (modeContext.activeMode == RuntimeMode::Repeat) {
@@ -1088,23 +1092,13 @@ void appLoopImpl() {
   }
 
   // Encoder push
-  if (ccOverlayInSpecialMode) {
-    if (leftPush == PUSHED) {
-      updateMidiControlFromEncoder(0);
-      selectCCPreset(0);
-    }
-    if (rightPush == PUSHED) {
-      updateMidiControlFromEncoder(1);
-      selectCCPreset(1);
-    }
-  }
-  else if (modeContext.ultrasonicActive) {
+  if (modeContext.ultrasonicActive) {
     // Ultrasonic edits are available on free encoder rotation.
   }
   else if (modeContext.repeatActive) {
     if (leftPush == PUSHED) {
       if (leftPushRisingEdge && aPadIsPushed()) {
-        updateHeldPadsRepeatLock(false);
+        updateHeldPadsRepeatLock(true);
       }
       else {
         updateArpStepNumberFromEncoder(0);
@@ -1112,7 +1106,7 @@ void appLoopImpl() {
     }
     if (rightPush == PUSHED) {
       if (rightPushRisingEdge && aPadIsPushed()) {
-        updateHeldPadsRepeatLock(true);
+        updateHeldPadsRepeatLock(false);
       }
       else {
         updateBpmFromEncoder(1);
@@ -1132,15 +1126,15 @@ void appLoopImpl() {
   else {
     if (leftPush == PUSHED) {
       if (leftPushRisingEdge && aPadIsPushed()) {
-        updateHeldPadsSettingsLock(false);
+        updateHeldPadsSettingsLock(true);
       }
       else {
-        scaleSelect(0);
+        updateChannelFromEncoder(0);
       }
     }
     if (rightPush == PUSHED) {
       if (rightPushRisingEdge && aPadIsPushed()) {
-        updateHeldPadsSettingsLock(true);
+        updateHeldPadsSettingsLock(false);
       }
       else {
         chordSelect(1);
@@ -1870,6 +1864,37 @@ byte getArpSourcePad(byte sourcePad, byte arpType) {
     chosenPad = (convergeStep % 2 == 0) ? arpPads[leftIndex] : arpPads[rightIndex];
     arpSlotIndex[sourcePad] = (currentPos + 1) % validCount;
   }
+  else if (arpType == ARP_TYPE_UP_DOWN || arpType == ARP_TYPE_DOWN_UP) {
+    byte stepCount = repeatIsLocked[sourcePad] ? pushRepeatStepNumber[sourcePad] : repeatArpStepNumber;
+    if (stepCount < 2) {
+      stepCount = 2;
+    }
+
+    byte stepProgress = arpStepProgress[sourcePad];
+    if (stepProgress >= stepCount) {
+      stepProgress = 0;
+    }
+
+    // The configured step count defines one full direction cycle.
+    // Example: 4 => up up down down, 6 => up up up down down down.
+    byte firstHalfCount = (stepCount + 1) / 2;
+    int phaseDirection = 1;
+    if (arpType == ARP_TYPE_UP_DOWN) {
+      phaseDirection = (stepProgress < firstHalfCount) ? 1 : -1;
+    }
+    else {
+      phaseDirection = (stepProgress < firstHalfCount) ? -1 : 1;
+    }
+
+    int nextPos = (int) currentPos + phaseDirection;
+    if (nextPos < 0) {
+      nextPos = validCount - 1;
+    }
+    else if (nextPos >= validCount) {
+      nextPos = 0;
+    }
+    arpSlotIndex[sourcePad] = nextPos;
+  }
   else {
     int nextPos = (int) currentPos + arpDirection[sourcePad];
     if (nextPos < 0 || nextPos >= validCount) {
@@ -2079,8 +2104,8 @@ void updatePads() {
         pushedTime[p] = micros();
         bool encoderPushActive = (leftPush == PUSHED || rightPush == PUSHED);
         if (activeMode == RuntimeMode::Play && encoderPushActive) {
-          bool shouldLock = (rightPush == PUSHED && leftPush != PUSHED);
-          bool shouldUnlock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool shouldLock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool shouldUnlock = (rightPush == PUSHED && leftPush != PUSHED);
           bool changed = false;
           if (shouldLock && !pushSettingsLocked[p]) {
             pushSettingsLocked[p] = true;
@@ -2099,8 +2124,8 @@ void updatePads() {
           }
         }
         else if (activeMode == RuntimeMode::Repeat && encoderPushActive) {
-          bool shouldLock = (rightPush == PUSHED && leftPush != PUSHED);
-          bool shouldUnlock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool shouldLock = (leftPush == PUSHED && rightPush != PUSHED);
+          bool shouldUnlock = (rightPush == PUSHED && leftPush != PUSHED);
           bool changed = false;
           bool unlockedNow = false;
           if (shouldLock && !repeatIsLocked[p]) {
