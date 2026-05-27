@@ -560,13 +560,13 @@ const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
 const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 1, 2, 2, 3, 4, 5, 5}, // Major
-  {0, 0, 3, 2, 2, 1, 2, 2}, // Minor
+  {0, 2, 3, 5, 7, 8, 10, 12}, // Minor
   {0, 2, 3, 4, 7, 9, UNASSIGNED, UNASSIGNED}, // Blues (major-blues style)
   {0, 3, 5, 6, 7, 10, UNASSIGNED, UNASSIGNED}, // Blues minor
   {0, 2, 4, 7, 9, 12, 14, 16}, // Major pentatonic
   {0, 2, 3, 5, 7, 9, 10, 12}, // Dorian
   {0, 1, 5, 7, 8, 12, 13, 17}, // Japanese / In Sen style
-  {0, 0, 2, 2, 5, 5, 7, 7}, // Drum-like clustered layout
+  {0, 2, 6, 10, 5, 9, 13, 15}, // DRUM parity row (runtime uses fixed DRUM_NOTES_MELODICS)
   {0, 2, 4, 5, 7, 9, 10, 12}, // Mixolydian
   {0, 2, 4, 5, 7, 9, 10, 11}, // Jazz (Bebop dominant)
 };
