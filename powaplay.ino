@@ -512,9 +512,10 @@ const char* const CHORD_NAMES[NB_CHORDS] PROGMEM = {
 };
 
 // Scales
-const byte NB_SCALES PROGMEM = 11;
+const byte NB_SCALES PROGMEM = 12;
 const byte SCALE_INDEX_SEMI PROGMEM = 0;
 const byte SCALE_INDEX_DRUM PROGMEM = 8;
+const byte SCALE_INDEX_PAG8 PROGMEM = 11;
 byte selectedScale = 0;
 const char kScaleName0[] PROGMEM = "SEMI";
 const char kScaleName1[] PROGMEM = "MAJ";
@@ -527,6 +528,7 @@ const char kScaleName7[] PROGMEM = "JAPN";
 const char kScaleName8[] PROGMEM = "DRUM";
 const char kScaleName9[] PROGMEM = "MIX ";
 const char kScaleName10[] PROGMEM = "JAZZ";
+const char kScaleName11[] PROGMEM = "PAG8";
 const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
   kScaleName0,
   kScaleName1,
@@ -538,7 +540,8 @@ const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
   kScaleName7,
   kScaleName8,
   kScaleName9,
-  kScaleName10
+  kScaleName10,
+  kScaleName11
 };
 const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 1, 2, 3, 4, 5, 6, 7}, // Semitone
@@ -552,6 +555,7 @@ const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
   {0, 2, 6, 10, 5, 9, 13, 15}, // DRUM parity row (runtime uses fixed DRUM_NOTES_MELODICS)
   {0, 2, 4, 5, 7, 9, 10, 12}, // Mixolydian
   {0, 2, 4, 5, 7, 9, 10, 11}, // Jazz (Bebop dominant)
+  {0, 1, 2, 3, 4, 5, 6, 7}, // PAG8 chromatic page; octave/page moves by 8 semitones
 };
 // Melodics-compatible GM drum map:
 // KICK(36), SNARE(38), CHH(42), OHH(46), LOW TOM(41), MID TOM(45), CRASH(49), RIDE(51)
@@ -625,6 +629,10 @@ byte readScaleStep(byte scaleIndex, byte padIndex) {
 
 byte readDrumNote(byte padIndex) {
   return pgm_read_byte(&DRUM_NOTES_MELODICS[padIndex]);
+}
+
+int getOctaveStrideSemitones() {
+  return selectedScale == SCALE_INDEX_PAG8 ? 8 : 12;
 }
 
 byte readChordInterval(byte chordIndex, byte intervalIndex) {
@@ -1349,9 +1357,10 @@ void updateOctaveFromFader(byte selected) {
     }
   }
   int octaveDelta = octave - previousOctave;
+  int octaveStride = getOctaveStrideSemitones();
   bool hasLockedTarget = (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]);
   if (octaveDelta != 0 && hasLockedTarget) {
-    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
+    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * octaveStride);
     if (updatedNote < 0) {
       updatedNote = 0;
     }
@@ -1361,7 +1370,7 @@ void updateOctaveFromFader(byte selected) {
     pushNote[selectedPushPin] = (byte) updatedNote;
   }
   else if (octaveDelta != 0) {
-    globalNoteOffset += octaveDelta * 12;
+    globalNoteOffset += octaveDelta * octaveStride;
     if (60 + globalNoteOffset < 0) {
       globalNoteOffset = -60;
     }
@@ -1626,9 +1635,10 @@ void moveOctave(bool up) {
   }
   display_iface::setColonOn(false);
   int octaveDelta = octave - previousOctave;
+  int octaveStride = getOctaveStrideSemitones();
   bool hasLockedTarget = (selectedPushPin != -1 && pushSettingsLocked[selectedPushPin]);
   if (octaveDelta != 0 && hasLockedTarget) {
-    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * 12);
+    int updatedNote = (int) pushNote[selectedPushPin] + (octaveDelta * octaveStride);
     if (updatedNote < 0) {
       updatedNote = 0;
     }
@@ -1638,7 +1648,7 @@ void moveOctave(bool up) {
     pushNote[selectedPushPin] = (byte) updatedNote;
   }
   else if (octaveDelta != 0) {
-    globalNoteOffset += octaveDelta * 12;
+    globalNoteOffset += octaveDelta * octaveStride;
     if (60 + globalNoteOffset < 0) {
       globalNoteOffset = -60;
     }
@@ -2259,7 +2269,7 @@ void playPadsArp() {
               effectiveArpType != ARP_TYPE_UP_DOWN &&
               effectiveArpType != ARP_TYPE_DOWN_UP) {
             byte octaveLayer = (stepCount > MAX_NOTES) ? (stepProgress / MAX_NOTES) : 0;
-            steppedNote = (int) currentNote + ((int) octaveLayer * 12);
+            steppedNote = (int) currentNote + ((int) octaveLayer * getOctaveStrideSemitones());
           }
           if (steppedNote > 127) {
             steppedNote = 127;

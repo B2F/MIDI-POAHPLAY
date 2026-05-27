@@ -98,10 +98,11 @@ Per-mode behavior:
 * Global velocity + per-pad velocity lock.
 * Global base note / transpose editing from PLAY mode Encoder 2 turn.
 * Global octave control from Fader 2, with note-layout updates applied live.
+* `PAG8` scale uses chromatic 8-pad pages where octave/page movement advances by 8 semitones instead of 12.
 * Chord engine with **14 chord types**:
   * `NOTE`, `MAJ`, `MIN`, `AUG`, `dIM`, `SUS2`, `SUS4`, `7th`, `MAJ7`, `MIN7`, `d7`, `5th`, `Ad9`, `m7b6`
-* Scale engine with **11 scale layouts**:
-  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `, `JAZZ`
+* Scale engine with **12 scale layouts**:
+  * `SEMI`, `MAJ`, `MIN_`, `BLUE`, `BLU_`, `PENT`, `DOR `, `JAPN`, `DRUM`, `MIX `, `JAZZ`, `PAG8`
 * Chord, scale, and arp selectors wrap around instead of stopping at the ends.
 
 ### Arp / Gate
