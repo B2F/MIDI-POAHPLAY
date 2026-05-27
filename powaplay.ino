@@ -541,8 +541,8 @@ const char* const SCALE_NAMES[NB_SCALES] PROGMEM = {
   kScaleName10
 };
 const byte SCALES[NB_SCALES][MAX_NOTES] PROGMEM = {
-  {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 1, 2, 2, 3, 4, 5, 5}, // Major
+  {0, 1, 2, 3, 4, 5, 6, 7}, // Semitone
+  {0, 2, 4, 5, 7, 9, 11, 12}, // Major
   {0, 2, 3, 5, 7, 8, 10, 12}, // Minor
   {0, 2, 3, 4, 7, 9, UNASSIGNED, UNASSIGNED}, // Blues (major-blues style)
   {0, 3, 5, 6, 7, 10, UNASSIGNED, UNASSIGNED}, // Blues minor
@@ -588,6 +588,7 @@ bool isPadArpActive(byte pin);
 void syncHeldPadsAfterNoteLayoutChange();
 bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity);
 bool triggerPadRootNote(byte sourcePad, byte note, byte velocity, bool state);
+bool getDirectionalArpPlaybackState(byte pin, byte arpType, byte stepCount, byte &currentNote, byte &currentVelocity);
 byte getArpSourcePad(byte sourcePad, byte arpType);
 byte getOrderedArpAnchorPad();
 void buildArpSlotPads(byte sourcePad, byte arpPads[MAX_NOTES], byte &validCount, byte &startPos);
@@ -776,7 +777,7 @@ void updateHeldPadsSettingsLock(bool isLocked) {
 }
 
 void resetPadToGlobalSettings(byte pad) {
-  pushNote[pad] = globalStartNote + pad;
+  pushNote[pad] = globalStartNote;
   pushVelocity[pad] = globalVelocity;
   pushRepeatSpeed[pad][0] = 1;
   pushRepeatSpeed[pad][1] = repeatSpeedDivisor;
@@ -859,7 +860,7 @@ void reinit() {
 
   for (byte i = 0; i < 8; i++) {
     pushVelocity[i] = 100;
-    pushNote[i] = globalStartNote + i;
+    pushNote[i] = globalStartNote;
   }
   for (byte i = 0; i < 8; i++) {
     pushSettingsLocked[i] = false;
@@ -933,7 +934,7 @@ void appSetupImpl() {
 
   // Push
   for (byte pad = 0; pad < NB_PUSH; pad++) {
-    pushNote[pad] = globalStartNote+pad;
+    pushNote[pad] = globalStartNote;
   }
 
   // Encoders:
@@ -1749,7 +1750,7 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
     return true;
   }
 
-  int noteValue = pushNote[pin];
+  int noteValue = pushSettingsLocked[pin] ? pushNote[pin] : globalStartNote;
   if (!pushSettingsLocked[pin]) {
     currentVelocity = globalVelocity;
     noteValue += globalNoteOffset;
@@ -1760,7 +1761,9 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
     return false;
   }
 
-  noteValue += scaleStep;
+  if (!pushSettingsLocked[pin]) {
+    noteValue += scaleStep;
+  }
   if (noteValue < 0) {
     noteValue = 0;
   }
@@ -1768,6 +1771,41 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
     noteValue = 127;
   }
   currentNote = noteValue;
+  return true;
+}
+
+bool getDirectionalArpPlaybackState(byte pin, byte arpType, byte stepCount, byte &currentNote, byte &currentVelocity) {
+  if (!getPadPlaybackState(pin, currentNote, currentVelocity)) {
+    return false;
+  }
+
+  byte progress = arpStepProgress[pin];
+  if (stepCount < 2) {
+    stepCount = 2;
+  }
+
+  byte distance = 0;
+  int direction = 1;
+
+  if (arpType == ARP_TYPE_UP) {
+    distance = progress % stepCount;
+    direction = 1;
+  }
+  else if (arpType == ARP_TYPE_DOWN) {
+    distance = progress % stepCount;
+    direction = -1;
+  }
+  else {
+    byte span = stepCount - 1;
+    byte cycleLen = span * 2;
+    byte cyclePos = progress % cycleLen;
+    distance = (cyclePos <= span) ? cyclePos : (cycleLen - cyclePos);
+    direction = (arpType == ARP_TYPE_UP_DOWN) ? 1 : -1;
+  }
+
+  for (byte i = 0; i < distance; i++) {
+    currentNote = (byte) stepNoteInCurrentScale(currentNote, direction);
+  }
   return true;
 }
 
@@ -1823,9 +1861,6 @@ byte getArpSourcePad(byte sourcePad, byte arpType) {
   if (arpType == ARP_TYPE_UP) {
     arpSlotIndex[sourcePad] = (currentPos + 1) % validCount;
   }
-  else if (arpType == ARP_TYPE_DOWN) {
-    arpSlotIndex[sourcePad] = (currentPos == 0) ? validCount - 1 : currentPos - 1;
-  }
   else if (arpType == ARP_TYPE_RANDOM) {
     chosenPad = arpPads[random(validCount)];
   }
@@ -1863,37 +1898,6 @@ byte getArpSourcePad(byte sourcePad, byte arpType) {
     byte rightIndex = validCount - 1 - leftIndex;
     chosenPad = (convergeStep % 2 == 0) ? arpPads[leftIndex] : arpPads[rightIndex];
     arpSlotIndex[sourcePad] = (currentPos + 1) % validCount;
-  }
-  else if (arpType == ARP_TYPE_UP_DOWN || arpType == ARP_TYPE_DOWN_UP) {
-    byte stepCount = repeatIsLocked[sourcePad] ? pushRepeatStepNumber[sourcePad] : repeatArpStepNumber;
-    if (stepCount < 2) {
-      stepCount = 2;
-    }
-
-    byte stepProgress = arpStepProgress[sourcePad];
-    if (stepProgress >= stepCount) {
-      stepProgress = 0;
-    }
-
-    // The configured step count defines one full direction cycle.
-    // Example: 4 => up up down down, 6 => up up up down down down.
-    byte firstHalfCount = (stepCount + 1) / 2;
-    int phaseDirection = 1;
-    if (arpType == ARP_TYPE_UP_DOWN) {
-      phaseDirection = (stepProgress < firstHalfCount) ? 1 : -1;
-    }
-    else {
-      phaseDirection = (stepProgress < firstHalfCount) ? -1 : 1;
-    }
-
-    int nextPos = (int) currentPos + phaseDirection;
-    if (nextPos < 0) {
-      nextPos = validCount - 1;
-    }
-    else if (nextPos >= validCount) {
-      nextPos = 0;
-    }
-    arpSlotIndex[sourcePad] = nextPos;
   }
   else {
     int nextPos = (int) currentPos + arpDirection[sourcePad];
@@ -2038,7 +2042,7 @@ void updatePadsLock(bool lock) {
       else {
         if (pushSettingsLocked[p]) {
           pushSettingsLocked[p] = false;
-          pushNote[p] = globalStartNote + p;
+          pushNote[p] = globalStartNote;
           anyChanged = true;
         }
         queueLockFeedback(false, p);
@@ -2229,20 +2233,34 @@ void playPadsArp() {
       ) {
         pushElapsedRepeats[pin]++;
         byte effectiveArpType = repeatIsLocked[pin] ? pushRepeatArpType[pin] : selectedArpType;
-        byte arpPad = getArpSourcePad(pin, effectiveArpType);
-        if (arpPad == UNASSIGNED) {
-          nextCap = getNextRepeatMicros(pin);
-          catchupSteps++;
-          continue;
-        }
-
         byte currentNote = 0;
         byte currentVelocity = 0;
-        if (getPadPlaybackState(arpPad, currentNote, currentVelocity)) {
-          byte stepCount = repeatIsLocked[pin] ? pushRepeatStepNumber[pin] : repeatArpStepNumber;
+        byte stepCount = repeatIsLocked[pin] ? pushRepeatStepNumber[pin] : repeatArpStepNumber;
+        bool hasPlaybackState = false;
+
+        if (effectiveArpType == ARP_TYPE_UP ||
+            effectiveArpType == ARP_TYPE_DOWN ||
+            effectiveArpType == ARP_TYPE_UP_DOWN ||
+            effectiveArpType == ARP_TYPE_DOWN_UP) {
+          hasPlaybackState = getDirectionalArpPlaybackState(pin, effectiveArpType, stepCount, currentNote, currentVelocity);
+        }
+        else {
+          byte arpPad = getArpSourcePad(pin, effectiveArpType);
+          if (arpPad != UNASSIGNED) {
+            hasPlaybackState = getPadPlaybackState(arpPad, currentNote, currentVelocity);
+          }
+        }
+
+        if (hasPlaybackState) {
           byte stepProgress = arpStepProgress[pin];
-          byte octaveLayer = (stepCount > MAX_NOTES) ? (stepProgress / MAX_NOTES) : 0;
-          int steppedNote = (int) currentNote + ((int) octaveLayer * 12);
+          int steppedNote = currentNote;
+          if (effectiveArpType != ARP_TYPE_UP &&
+              effectiveArpType != ARP_TYPE_DOWN &&
+              effectiveArpType != ARP_TYPE_UP_DOWN &&
+              effectiveArpType != ARP_TYPE_DOWN_UP) {
+            byte octaveLayer = (stepCount > MAX_NOTES) ? (stepProgress / MAX_NOTES) : 0;
+            steppedNote = (int) currentNote + ((int) octaveLayer * 12);
+          }
           if (steppedNote > 127) {
             steppedNote = 127;
           }
@@ -2250,6 +2268,17 @@ void playPadsArp() {
           stepProgress++;
           if (effectiveArpType == ARP_TYPE_SINGLE_NOTE) {
             stepProgress = 0;
+          }
+          else if (effectiveArpType == ARP_TYPE_UP ||
+                   effectiveArpType == ARP_TYPE_DOWN ||
+                   effectiveArpType == ARP_TYPE_UP_DOWN ||
+                   effectiveArpType == ARP_TYPE_DOWN_UP) {
+            byte directionalStepCount = stepCount < 2 ? 2 : stepCount;
+            byte phraseLength = directionalStepCount;
+            if (effectiveArpType == ARP_TYPE_UP_DOWN || effectiveArpType == ARP_TYPE_DOWN_UP) {
+              phraseLength = (directionalStepCount - 1) * 2;
+            }
+            arpStepProgress[pin] = stepProgress % phraseLength;
           }
           else if (stepProgress >= stepCount) {
             stepProgress = 0;
