@@ -17,9 +17,9 @@ Quick controls overview:
 
 | Active mode | Fader 1 | Fader 2 | Encoder 1 (turn) | Encoder 2 (turn) | Left encoder push | Right encoder push | Encoder push + pad |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `PLAY` (SW_PLAY) | Velocity | Octave | Scale select | Base note / transpose reference | MIDI channel (`CH1..CH16`) | Chord select | Left push + pad: lock pad settings; Right push + pad: unlock pad settings |
+| `PLAY` (SW_PLAY) | Velocity | Octave | Scale select | Base note / transpose reference | MIDI channel (`CH1..CH16`) | Chord select | Left push + pad: lock pad + repeat settings; Right push + pad: unlock pad + repeat settings |
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection | CC lane 2 selection | Pad presets lane (C091-C100) |
-| `REPEAT` (SW_REPEAT) | Velocity | Octave | Arp type select | Arp speed/divisor edit (`1:2..1:64`) | Arp step number edit (`St2..St16`); hold + Encoder 2 = precise speed/divisor edit | BPM edit (`###b`) | Left push + pad: lock pad repeat settings; Right push + pad: unlock pad repeat settings |
+| `REPEAT` (SW_REPEAT) | Velocity | Octave | Arp type select | Arp speed/divisor edit (`1:2..1:64`) | Arp step number edit (`St2..St16`); hold + Encoder 2 = precise speed/divisor edit | BPM edit (`###b`) | Left push + pad: latch/engage pad arp; Right push + pad: unlatch/stop pad arp |
 | `ULTRASONIC` (SW_ULTRASONIC) | CC lane 1 value | CC lane 2 value | Ultrasonic target CC select | Ultrasonic max distance edit | no dedicated push-turn assignment | no dedicated push-turn assignment | no dedicated push + pad assignment |
 
 Mode selection behavior:
@@ -49,9 +49,9 @@ Per-mode behavior:
   * Left encoder push: MIDI channel (`CH1..CH16`).
   * Right encoder push: chord select.
   * Chord and scale selectors wrap around.
-  * Pad settings lock/unlock workflows (`pushSettingsLocked`):
-    * Left push + pad press, or hold pad then left push -> lock pad settings.
-    * Right push + pad press, or hold pad then right push -> unlock pad settings (resets pad settings to global).
+  * Pad settings lock/unlock workflows (`pushSettingsLocked` + repeat settings lock):
+    * Left push + pad press, or hold pad then left push -> lock pad settings and snapshot per-pad repeat settings.
+    * Right push + pad press, or hold pad then right push -> unlock pad settings and repeat settings (resets both to global).
   * Lock/unlock feedback labels: `LOC Pn SET` / `ULOC Pn SET`.
 
 * **CC Mode (`SW_CC` switch)**
@@ -67,11 +67,12 @@ Per-mode behavior:
   * Left encoder push: encoder 1 edits arp step number (`St2..St16`), and encoder 2 edits arp rate/divisor precisely one divisor step at a time.
   * Right encoder push: BPM edit.
   * Repeat lock workflows (`repeatIsLocked`):
-    * Left push + pad press, or hold pad then left push -> lock pad repeat settings.
-    * Right push + pad press, or hold pad then right push -> unlock pad repeat settings (resets repeat settings to global).
+    * Left push + pad press, or hold pad then left push -> latch/engage pad arp playback.
+    * Right push + pad press, or hold pad then right push -> unlatch/stop pad arp playback.
+    * Repeat lock controls arp latch behavior only; per-pad repeat settings are enabled by Play-mode pad lock.
   * Lock/unlock feedback labels: `LOC Pn REP` / `ULOC Pn REP`.
   * Arp selector wraps around.
-  * Pad repeat lock state (`repeatIsLocked`) is independent per pad.
+  * Pad arp latch state (`repeatIsLocked`) is independent per pad.
 
 * **Ultrasonic Mode (`SW_ULTRASONIC` switch)**
   * Fader 1 edits CC lane 1 value and Fader 2 edits CC lane 2 value (same lane selection as CC mode).
@@ -86,7 +87,9 @@ Per-mode behavior:
   * No pad is left silent because of `UNASSIGNED` scale slots; later pads continue the same scale in the next octave.
 
 * **Locking semantics note**
-  * Play-mode pad settings lock (`pushSettingsLocked`) and Repeat-mode repeat lock (`repeatIsLocked`) are separate mechanisms.
+  * Play-mode pad settings lock (`pushSettingsLocked`) also enables per-pad repeat settings.
+  * Repeat-mode repeat lock (`repeatIsLocked`) only controls arp latch/playback behavior.
+  * Unlocking pad settings in Play mode unlocks per-pad repeat settings, but does not clear an active repeat latch.
   * The selected settings target pad stays active until another pad is pressed.
   * Encoder-function messages have display priority over pad-note labels while encoder interaction is active.
 
@@ -110,6 +113,7 @@ Per-mode behavior:
 * Arp playback uses the current 8-pad scale layout as its note pool and chord-voices each step through the selected chord.
 * Tempo/gate behavior is per pad, with scheduled NoteOff handling to avoid stuck or overly long repeated notes.
 * Pad latch/lock is available inside arp mode, so a pad can continue running after release.
+* Per-pad repeat settings are enabled by Play-mode pad lock; Repeat-mode lock only controls arp latch/playback.
 * Current arp types:
 
 | Label | Meaning |

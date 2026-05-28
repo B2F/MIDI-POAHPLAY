@@ -474,6 +474,7 @@ hardware_cleanup::DigitalDebounceState padDebounceState[NB_PUSH] = {
 };
 unsigned long pushedTime[NB_PUSH] = {0,0,0,0,0,0,0,0};
 bool repeatIsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
+bool repeatSettingsLocked[NB_PUSH] = {false, false, false, false, false, false, false, false};
 int selectedPushPin = -1;
 unsigned long padPressOrder[NB_PUSH] = {0,0,0,0,0,0,0,0};
 unsigned long nextPadPressOrder = 1;
@@ -744,13 +745,11 @@ void updateHeldPadsRepeatLock(bool isLocked) {
       continue;
     }
     if (isLocked && !repeatIsLocked[p]) {
-      resetPadRepeatToGlobal(p);
       repeatIsLocked[p] = true;
     }
     else if (!isLocked) {
       bool wasLocked = repeatIsLocked[p];
       repeatIsLocked[p] = false;
-      resetPadRepeatToGlobal(p);
       if (wasLocked) {
         padScheduledOffMicros[p] = 0;
         if (padNoteIsOn[p]) {
@@ -770,14 +769,26 @@ void updateHeldPadsSettingsLock(bool isLocked) {
     if (isPushed[p] != PUSHED) {
       continue;
     }
-    if (isLocked && !pushSettingsLocked[p]) {
-      pushSettingsLocked[p] = true;
-      anyChanged = true;
+    if (isLocked) {
+      if (!pushSettingsLocked[p]) {
+        pushSettingsLocked[p] = true;
+        anyChanged = true;
+      }
+      if (!repeatSettingsLocked[p]) {
+        resetPadRepeatToGlobal(p);
+        repeatSettingsLocked[p] = true;
+      }
     }
-    else if (!isLocked && pushSettingsLocked[p]) {
-      pushSettingsLocked[p] = false;
-      resetPadToGlobalSettings(p);
-      anyChanged = true;
+    else {
+      if (pushSettingsLocked[p]) {
+        pushSettingsLocked[p] = false;
+        resetPadToGlobalSettings(p);
+        anyChanged = true;
+      }
+      if (repeatSettingsLocked[p]) {
+        repeatSettingsLocked[p] = false;
+        resetPadRepeatToGlobal(p);
+      }
     }
     queueLockFeedback(pushSettingsLocked[p], p);
   }
@@ -789,11 +800,10 @@ void updateHeldPadsSettingsLock(bool isLocked) {
 void resetPadToGlobalSettings(byte pad) {
   pushNote[pad] = globalStartNote;
   pushVelocity[pad] = globalVelocity;
-  pushRepeatSpeed[pad][0] = 1;
-  pushRepeatSpeed[pad][1] = repeatSpeedDivisor;
-  pendingRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
-  pendingRepeatSpeedChange[pad] = false;
-  liveRepeatSpeedDivisor[pad] = repeatSpeedDivisor;
+}
+
+bool usesLocalRepeatSettings(byte pad) {
+  return repeatSettingsLocked[pad];
 }
 
 void resetPadRepeatToGlobal(byte pad) {
@@ -874,6 +884,7 @@ void reinit() {
   }
   for (byte i = 0; i < 8; i++) {
     pushSettingsLocked[i] = false;
+    repeatSettingsLocked[i] = false;
   }
   for (byte i = 0; i < 8; i++) {
     pushRepeatSpeed[i][0] = 1;
@@ -1312,14 +1323,14 @@ void arpSelect(byte selected) {
 
   int delta = encoderVal[selected] - encoderPos[selected];
   byte currentArpType = selectedArpType;
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     currentArpType = pushRepeatArpType[selectedPushPin];
   }
   int wrappedArpType = ((int) currentArpType + delta) % NB_ARP_TYPES;
   if (wrappedArpType < 0) {
     wrappedArpType += NB_ARP_TYPES;
   }
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     pushRepeatArpType[selectedPushPin] = wrappedArpType;
   }
   else {
@@ -1712,7 +1723,7 @@ void resetArpState(byte pin, unsigned long referenceTime) {
   pushElapsedRepeats[pin] = 0;
   arpStepProgress[pin] = 0;
   arpSlotIndex[pin] = UNASSIGNED;
-  byte effectiveArpType = repeatIsLocked[pin] ? pushRepeatArpType[pin] : selectedArpType;
+  byte effectiveArpType = usesLocalRepeatSettings(pin) ? pushRepeatArpType[pin] : selectedArpType;
   arpDirection[pin] = (effectiveArpType == ARP_TYPE_DOWN || effectiveArpType == ARP_TYPE_DOWN_UP) ? -1 : 1;
   arpLastRandomIndex[pin] = UNASSIGNED;
   arpShuffleCount[pin] = 0;
@@ -2033,6 +2044,7 @@ void panicAllNotesOff() {
     padScheduledOffMicros[p] = 0;
     isPushed[p] = RELEASED;
     repeatIsLocked[p] = false;
+    repeatSettingsLocked[p] = false;
     padPressOrder[p] = 0;
     resetArpState(p);
   }
@@ -2050,13 +2062,22 @@ void updatePadsLock(bool lock) {
           pushSettingsLocked[p] = true;
           anyChanged = true;
         }
+        if (!repeatSettingsLocked[p]) {
+          resetPadRepeatToGlobal(p);
+          repeatSettingsLocked[p] = true;
+        }
         queueLockFeedback(true, p);
       }
       else {
         if (pushSettingsLocked[p]) {
           pushSettingsLocked[p] = false;
           pushNote[p] = globalStartNote;
+          pushVelocity[p] = globalVelocity;
           anyChanged = true;
+        }
+        if (repeatSettingsLocked[p]) {
+          repeatSettingsLocked[p] = false;
+          resetPadRepeatToGlobal(p);
         }
         queueLockFeedback(false, p);
       }
@@ -2124,14 +2145,26 @@ void updatePads() {
           bool shouldLock = (leftPush == PUSHED && rightPush != PUSHED);
           bool shouldUnlock = (rightPush == PUSHED && leftPush != PUSHED);
           bool changed = false;
-          if (shouldLock && !pushSettingsLocked[p]) {
-            pushSettingsLocked[p] = true;
-            changed = true;
+          if (shouldLock) {
+            if (!pushSettingsLocked[p]) {
+              pushSettingsLocked[p] = true;
+              changed = true;
+            }
+            if (!repeatSettingsLocked[p]) {
+              resetPadRepeatToGlobal(p);
+              repeatSettingsLocked[p] = true;
+            }
           }
-          else if (shouldUnlock && pushSettingsLocked[p]) {
-            pushSettingsLocked[p] = false;
-            resetPadToGlobalSettings(p);
-            changed = true;
+          else if (shouldUnlock) {
+            if (pushSettingsLocked[p]) {
+              pushSettingsLocked[p] = false;
+              resetPadToGlobalSettings(p);
+              changed = true;
+            }
+            if (repeatSettingsLocked[p]) {
+              repeatSettingsLocked[p] = false;
+              resetPadRepeatToGlobal(p);
+            }
           }
           if (shouldLock || shouldUnlock) {
             queueLockFeedback(pushSettingsLocked[p], p);
@@ -2146,14 +2179,12 @@ void updatePads() {
           bool changed = false;
           bool unlockedNow = false;
           if (shouldLock && !repeatIsLocked[p]) {
-            resetPadRepeatToGlobal(p);
             repeatIsLocked[p] = true;
             changed = true;
           }
           else if (shouldUnlock) {
             unlockedNow = repeatIsLocked[p];
             repeatIsLocked[p] = false;
-            resetPadRepeatToGlobal(p);
             changed = changed || unlockedNow;
           }
           if ((changed || unlockedNow) && !repeatIsLocked[p]) {
@@ -2245,10 +2276,10 @@ void playPadsArp() {
         repeatIsLocked[pin] == true
       ) {
         pushElapsedRepeats[pin]++;
-        byte effectiveArpType = repeatIsLocked[pin] ? pushRepeatArpType[pin] : selectedArpType;
+        byte effectiveArpType = usesLocalRepeatSettings(pin) ? pushRepeatArpType[pin] : selectedArpType;
         byte currentNote = 0;
         byte currentVelocity = 0;
-        byte stepCount = repeatIsLocked[pin] ? pushRepeatStepNumber[pin] : repeatArpStepNumber;
+        byte stepCount = usesLocalRepeatSettings(pin) ? pushRepeatStepNumber[pin] : repeatArpStepNumber;
         bool hasPlaybackState = false;
 
         if (effectiveArpType == ARP_TYPE_UP ||
@@ -2324,7 +2355,7 @@ void playPadsArp() {
 }
 
 float getRepeatSpeed(byte pin) {
-  byte currentRepeatSpeedDivisor = repeatIsLocked[pin] ? pushRepeatSpeed[pin][1] : liveRepeatSpeedDivisor[pin];
+  byte currentRepeatSpeedDivisor = usesLocalRepeatSettings(pin) ? pushRepeatSpeed[pin][1] : liveRepeatSpeedDivisor[pin];
   return (float) 4 * ((float) 1 / (float) currentRepeatSpeedDivisor);
 }
 
@@ -2531,7 +2562,7 @@ void updateVelocityFromFader(byte selected) {
 }
 
 byte getCurrentRepeatSpeedDivisor() {
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     return pushRepeatSpeed[selectedPushPin][1];
   }
   return repeatSpeedDivisor;
@@ -2575,7 +2606,7 @@ void displayRepeatSpeedDivisor(byte divisor) {
 
 void applyRepeatSpeedDivisor(byte divisor) {
   unsigned long now = micros();
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     pushRepeatSpeed[selectedPushPin][1] = divisor;
     liveRepeatSpeedDivisor[selectedPushPin] = divisor;
     pendingRepeatSpeedDivisor[selectedPushPin] = 0;
@@ -2585,7 +2616,7 @@ void applyRepeatSpeedDivisor(byte divisor) {
   else {
     repeatSpeedDivisor = divisor;
     for (byte pad = 0; pad < NB_PUSH; pad++) {
-      if (repeatIsLocked[pad]) {
+      if (usesLocalRepeatSettings(pad)) {
         continue;
       }
       liveRepeatSpeedDivisor[pad] = divisor;
@@ -2666,7 +2697,7 @@ void updateArpStepNumberFromEncoder(byte selected) {
 
   int delta = encoderVal[selected] - encoderPos[selected];
   byte currentStep = repeatArpStepNumber;
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     currentStep = pushRepeatStepNumber[selectedPushPin];
   }
   int nextStep = (int) currentStep + delta;
@@ -2682,7 +2713,7 @@ void updateArpStepNumberFromEncoder(byte selected) {
     return;
   }
 
-  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+  if (selectedPushPin != -1 && usesLocalRepeatSettings(selectedPushPin)) {
     pushRepeatStepNumber[selectedPushPin] = (byte) nextStep;
   }
   else {
