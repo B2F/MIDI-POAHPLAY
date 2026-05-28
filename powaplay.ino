@@ -85,6 +85,8 @@ byte programChange = 0;
 byte globalVelocity = 127;
 int globalNoteOffset = 0;
 const byte ticksPerNote PROGMEM = 96;
+const byte REPEAT_SPEED_DIVISORS[] = {2, 4, 8, 16, 32, 64};
+const byte NB_REPEAT_SPEED_DIVISORS = sizeof(REPEAT_SPEED_DIVISORS) / sizeof(REPEAT_SPEED_DIVISORS[0]);
 unsigned long startTime = 0;
 long nbElapsedNotes = 0;
 const int MIDI_START_OFFSET PROGMEM = 0;
@@ -1111,6 +1113,7 @@ void appLoopImpl() {
       }
       else {
         updateArpStepNumberFromEncoder(0);
+        updatePreciseArpRateFromEncoder(1);
       }
     }
     if (rightPush == PUSHED) {
@@ -2527,43 +2530,103 @@ void updateVelocityFromFader(byte selected) {
   updateVelocity(newMidiValue, newMidiValue);
 }
 
-void updateArpRateFromEncoder(byte selected) {
-  bool changed = false;
-  byte tmpRepeatSpeedDivisor = repeatSpeedDivisor;
+byte getCurrentRepeatSpeedDivisor() {
   if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
-    tmpRepeatSpeedDivisor = pushRepeatSpeed[selectedPushPin][1];
+    return pushRepeatSpeed[selectedPushPin][1];
   }
+  return repeatSpeedDivisor;
+}
 
-  if (encoderVal[selected] != encoderPos[selected]) {
-    tmpRepeatSpeedDivisor = tmpRepeatSpeedDivisor + encoderVal[selected] - encoderPos[selected];
-    if (tmpRepeatSpeedDivisor > 64) {
-      tmpRepeatSpeedDivisor = 64;
-    }
-    if (tmpRepeatSpeedDivisor < 1) { tmpRepeatSpeedDivisor = 1; }
-    encoderPos[selected] = encoderVal[selected];
-    changed = true;
+byte clampRepeatSpeedDivisor(int divisor) {
+  if (divisor > 64) {
+    return 64;
   }
-  if (changed) {
-    if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
-      pushRepeatSpeed[selectedPushPin][1] = tmpRepeatSpeedDivisor;
-      pendingRepeatSpeedDivisor[selectedPushPin] = tmpRepeatSpeedDivisor;
-      pendingRepeatSpeedChange[selectedPushPin] = true;
-    }
-    else {
-      repeatSpeedDivisor = tmpRepeatSpeedDivisor;
-      for (byte pad = 0; pad < NB_PUSH; pad++) {
-        if (repeatIsLocked[pad]) {
-          continue;
-        }
-        pendingRepeatSpeedDivisor[pad] = tmpRepeatSpeedDivisor;
-        pendingRepeatSpeedChange[pad] = true;
+  if (divisor < 1) {
+    return 1;
+  }
+  return (byte) divisor;
+}
+
+byte stepRepeatSpeedDivisor(byte currentDivisor, int direction) {
+  if (direction > 0) {
+    for (byte i = 0; i < NB_REPEAT_SPEED_DIVISORS; i++) {
+      if (REPEAT_SPEED_DIVISORS[i] > currentDivisor) {
+        return REPEAT_SPEED_DIVISORS[i];
       }
     }
-    display_iface::clear();
-    char label[6];
-    snprintf(label, sizeof(label), " 1%u", tmpRepeatSpeedDivisor);
-    display_iface::print(label);
-    display_iface::setColonOn(true);
+    return currentDivisor;
+  }
+
+  for (int i = NB_REPEAT_SPEED_DIVISORS - 1; i >= 0; i--) {
+    if (REPEAT_SPEED_DIVISORS[i] < currentDivisor) {
+      return REPEAT_SPEED_DIVISORS[i];
+    }
+  }
+  return currentDivisor;
+}
+
+void displayRepeatSpeedDivisor(byte divisor) {
+  display_iface::clear();
+  char label[6];
+  snprintf(label, sizeof(label), " 1%u", divisor);
+  display_iface::print(label);
+  display_iface::setColonOn(true);
+}
+
+void applyRepeatSpeedDivisor(byte divisor) {
+  unsigned long now = micros();
+  if (selectedPushPin != -1 && repeatIsLocked[selectedPushPin]) {
+    pushRepeatSpeed[selectedPushPin][1] = divisor;
+    liveRepeatSpeedDivisor[selectedPushPin] = divisor;
+    pendingRepeatSpeedDivisor[selectedPushPin] = 0;
+    pendingRepeatSpeedChange[selectedPushPin] = false;
+    resetArpState(selectedPushPin, now);
+  }
+  else {
+    repeatSpeedDivisor = divisor;
+    for (byte pad = 0; pad < NB_PUSH; pad++) {
+      if (repeatIsLocked[pad]) {
+        continue;
+      }
+      liveRepeatSpeedDivisor[pad] = divisor;
+      pendingRepeatSpeedDivisor[pad] = 0;
+      pendingRepeatSpeedChange[pad] = false;
+      resetArpState(pad, now);
+    }
+  }
+  displayRepeatSpeedDivisor(divisor);
+}
+
+void updateArpRateFromEncoder(byte selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  int delta = encoderVal[selected] - encoderPos[selected];
+  int direction = delta > 0 ? 1 : -1;
+  int steps = delta > 0 ? delta : -delta;
+  byte nextDivisor = getCurrentRepeatSpeedDivisor();
+  for (int i = 0; i < steps; i++) {
+    nextDivisor = stepRepeatSpeedDivisor(nextDivisor, direction);
+  }
+
+  encoderPos[selected] = encoderVal[selected];
+  if (nextDivisor != getCurrentRepeatSpeedDivisor()) {
+    applyRepeatSpeedDivisor(nextDivisor);
+  }
+}
+
+void updatePreciseArpRateFromEncoder(byte selected) {
+  if (encoderVal[selected] == encoderPos[selected]) {
+    return;
+  }
+
+  byte nextDivisor = clampRepeatSpeedDivisor(
+    (int) getCurrentRepeatSpeedDivisor() + encoderVal[selected] - encoderPos[selected]
+  );
+  encoderPos[selected] = encoderVal[selected];
+  if (nextDivisor != getCurrentRepeatSpeedDivisor()) {
+    applyRepeatSpeedDivisor(nextDivisor);
   }
 }
 

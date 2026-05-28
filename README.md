@@ -19,7 +19,7 @@ Quick controls overview:
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `PLAY` (SW_PLAY) | Velocity | Octave | Scale select | Base note / transpose reference | MIDI channel (`CH1..CH16`) | Chord select | Left push + pad: lock pad settings; Right push + pad: unlock pad settings |
 | `CC` (SW_CC) | CC lane 1 value | CC lane 2 value | CC lane 1 value | CC lane 2 value | CC lane 1 selection | CC lane 2 selection | Pad presets lane (C091-C100) |
-| `REPEAT` (SW_REPEAT) | Velocity | Octave | Arp type select | Arp speed/divisor edit | Arp step number edit (`St2..St16`) | BPM edit (`###b`) | Left push + pad: lock pad repeat settings; Right push + pad: unlock pad repeat settings |
+| `REPEAT` (SW_REPEAT) | Velocity | Octave | Arp type select | Arp speed/divisor edit (`1:2..1:64`) | Arp step number edit (`St2..St16`); hold + Encoder 2 = precise speed/divisor edit | BPM edit (`###b`) | Left push + pad: lock pad repeat settings; Right push + pad: unlock pad repeat settings |
 | `ULTRASONIC` (SW_ULTRASONIC) | CC lane 1 value | CC lane 2 value | Ultrasonic target CC select | Ultrasonic max distance edit | no dedicated push-turn assignment | no dedicated push-turn assignment | no dedicated push + pad assignment |
 
 Mode selection behavior:
@@ -63,8 +63,8 @@ Per-mode behavior:
 
 * **REP Mode (`SW_REPEAT` switch)**
   * Fader 1 = Velocity, Fader 2 = Octave.
-  * With **no encoder push held**, encoder 1 selects arp type and encoder 2 edits arp rate/divisor.
-  * Left encoder push: arp step number edit (`St2..St16`).
+  * With **no encoder push held**, encoder 1 selects arp type and encoder 2 edits arp rate/divisor through fixed values: `1:2`, `1:4`, `1:8`, `1:16`, `1:32`, `1:64`.
+  * Left encoder push: encoder 1 edits arp step number (`St2..St16`), and encoder 2 edits arp rate/divisor precisely one divisor step at a time.
   * Right encoder push: BPM edit.
   * Repeat lock workflows (`repeatIsLocked`):
     * Left push + pad press, or hold pad then left push -> lock pad repeat settings.
