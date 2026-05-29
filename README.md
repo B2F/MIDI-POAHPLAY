@@ -82,6 +82,7 @@ Per-mode behavior:
 * **DRUM scale note path**
   * The `DRUM` scale uses a direct GM drum-note map (`36, 38, 42, 46, 41, 45, 49, 51`) for Melodics/E-Drums compatibility.
   * In DRUM scale, this direct map is used for playback instead of the generic scale-step transpose path.
+  * Pad settings lock overrides the DRUM map for that pad, preserving the locked note assignment.
 * **Scale pad filling (non-DRUM)**
   * Scales that define fewer than 8 steps are auto-expanded across octaves so all 8 pads are playable.
   * No pad is left silent because of `UNASSIGNED` scale slots; later pads continue the same scale in the next octave.

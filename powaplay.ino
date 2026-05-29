@@ -771,6 +771,7 @@ void updateHeldPadsSettingsLock(bool isLocked) {
     }
     if (isLocked) {
       if (!pushSettingsLocked[p]) {
+        lockPadPlaySettings(p);
         pushSettingsLocked[p] = true;
         anyChanged = true;
       }
@@ -800,6 +801,18 @@ void updateHeldPadsSettingsLock(bool isLocked) {
 void resetPadToGlobalSettings(byte pad) {
   pushNote[pad] = globalStartNote;
   pushVelocity[pad] = globalVelocity;
+}
+
+void lockPadPlaySettings(byte pad) {
+  bool wasLocked = pushSettingsLocked[pad];
+  pushSettingsLocked[pad] = false;
+  byte currentNote = 0;
+  byte currentVelocity = 0;
+  if (getPadPlaybackState(pad, currentNote, currentVelocity)) {
+    pushNote[pad] = currentNote;
+    pushVelocity[pad] = currentVelocity;
+  }
+  pushSettingsLocked[pad] = wasLocked;
 }
 
 bool usesLocalRepeatSettings(byte pad) {
@@ -1768,9 +1781,9 @@ bool getPadPlaybackState(byte pin, byte &currentNote, byte &currentVelocity) {
 
   if (selectedScale == SCALE_INDEX_DRUM) {
     // DRUM scale is intentionally a direct GM drum note map for Melodics/E-Drums compatibility.
-    // We bypass scale step offsets here so each pad always sends the expected drum voice.
+    // Locked pads keep their stored note; unlocked pads follow the fixed drum map.
     currentVelocity = pushSettingsLocked[pin] ? pushVelocity[pin] : globalVelocity;
-    currentNote = readDrumNote(pin);
+    currentNote = pushSettingsLocked[pin] ? pushNote[pin] : readDrumNote(pin);
     return true;
   }
 
@@ -2059,6 +2072,7 @@ void updatePadsLock(bool lock) {
     if (isPushed[p] == PUSHED) {
       if (lock == false) {
         if (!pushSettingsLocked[p]) {
+          lockPadPlaySettings(p);
           pushSettingsLocked[p] = true;
           anyChanged = true;
         }
@@ -2147,6 +2161,7 @@ void updatePads() {
           bool changed = false;
           if (shouldLock) {
             if (!pushSettingsLocked[p]) {
+              lockPadPlaySettings(p);
               pushSettingsLocked[p] = true;
               changed = true;
             }
