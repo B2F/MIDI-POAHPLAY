@@ -7,8 +7,7 @@ DIY performance controller firmware (Arduino sketch) that outputs **MIDI over Se
 * **Control Change (CC):** Encoders, faders, pad presets, and the ultrasonic sensor send CC values.
 * **Clock/Transport Sync:** Listens to MIDI Clock, Start, Stop, Continue, and Song Position Pointer for tempo-synced arp behavior.
 
-![MIDI P0AH PLAY](images/1776264780911.jpg)
-
+[![Watch the video](images/1776264780911.jpg)](https://youtu.be/zg9TH8Jzy1w?si=avBMm-vfZUuDONZF)
 *This prototype build uses 4 Sanwa arcade push buttons.*
 
 ## 🕹 Operating Modes
