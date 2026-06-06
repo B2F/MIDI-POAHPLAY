@@ -51,6 +51,8 @@ namespace display_iface {
   inline void print(const String& text) { trackMutation(); get().print(text); }
   inline void print(const char* text) { trackMutation(); get().print(text); }
   inline void print(char text) { trackMutation(); get().print(text); }
+  inline void print(int text) { trackMutation(); get().print(text); }
+  inline void print(unsigned int text) { trackMutation(); get().print(text); }
   inline void scrollingText(const char* text, uint8_t repeats) { trackMutation(); get().scrollingText(text, repeats); }
   inline void blink() { trackMutation(); get().blink(); }
   inline void snake(uint8_t loops, uint16_t delayMs) { trackMutation(); get().snake(loops, delayMs); }

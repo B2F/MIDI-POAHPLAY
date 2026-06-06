@@ -716,7 +716,9 @@ void tickModeScroll(bool interactionActive) {
 
 void queueLockFeedback(bool isLocked, byte pad) {
   char label[16];
-  snprintf(label, sizeof(label), "%s P%u SET", isLocked ? "LOC" : "ULOC", pad + 1);
+  strcpy(label, isLocked ? "LOC P" : "ULOC P");
+  label[isLocked ? 5 : 6] = '1' + pad;
+  strcpy(label + (isLocked ? 6 : 7), " SET");
   modeScrollPending = false;
   display_iface::cancelScroll(modeScrollState);
   display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
@@ -725,7 +727,9 @@ void queueLockFeedback(bool isLocked, byte pad) {
 
 void queueRepeatLockFeedback(bool isLocked, byte pad) {
   char label[24];
-  snprintf(label, sizeof(label), "%s P%u rEP", isLocked ? "LOC" : "ULOC", pad + 1);
+  strcpy(label, isLocked ? "LOC P" : "ULOC P");
+  label[isLocked ? 5 : 6] = '1' + pad;
+  strcpy(label + (isLocked ? 6 : 7), " rEP");
   modeScrollPending = false;
   display_iface::cancelScroll(modeScrollState);
   display_iface::startScroll(lockFeedbackScrollState, label, MODE_SCROLL_STEP_MS);
@@ -1212,8 +1216,8 @@ void updateChannelFromEncoder(byte selected) {
     midiChannel = wrappedChannel + 1;
     display_iface::clear();
     display_iface::setColonOn(false);
-    char label[6];
-    snprintf(label, sizeof(label), "CH%u", midiChannel);
+    char label[6] = "CH";
+    itoa(midiChannel, label + 2, 10);
     display_iface::print(label);
     encoderPos[selected] = encoderVal[selected];
   }
@@ -1374,16 +1378,10 @@ void updateOctaveFromFader(byte selected) {
   octave = round(relativeValue / 100) - 4;
   if (!shouldSuppressLiveDisplay()) {
     display_iface::clear();
-    if (octave >= 0) {
-      char label[8];
-      snprintf(label, sizeof(label), "%doct", octave);
-      display_iface::print(label);
-    }
-    else {
-      char label[8];
-      snprintf(label, sizeof(label), "%doc", octave);
-      display_iface::print(label);
-    }
+    char label[8];
+    itoa(octave, label, 10);
+    strcat(label, octave >= 0 ? "oct" : "oc");
+    display_iface::print(label);
   }
   int octaveDelta = octave - previousOctave;
   int octaveStride = getOctaveStrideSemitones();
@@ -1555,8 +1553,8 @@ int getMidiValueFromEncoder(byte currentMidiValue, int position, int previousPos
 const char* getNoteFromMidiValue(byte midiValue) {
   // Lightweight formatter to avoid allocating 128 Strings on each call.
   static char note[5];
-  const char* names[12] = {
-    "C", "d", "D", "E", "E", "F", "F", "G", "A", "A", "b", "b"
+  const char names[12] = {
+    'C', 'd', 'D', 'E', 'E', 'F', 'F', 'G', 'A', 'A', 'b', 'b'
   };
   const char accidental[12] = {
     ' ', 'b', ' ', 'b', ' ', ' ', 'b', ' ', 'b', ' ', 'b', ' '
@@ -1566,12 +1564,17 @@ const char* getNoteFromMidiValue(byte midiValue) {
   byte oct = midiValue / 12;
   // Keep same compact style as existing display strings (4 chars max)
   // e.g. " C4 ", "Eb4 ", "A10 " -> compressed for 4-char display.
+  note[0] = names[n];
   if (oct < 10) {
-    snprintf(note, sizeof(note), "%1s%c%1u", names[n], accidental[n], oct);
+    note[1] = accidental[n];
+    note[2] = '0' + oct;
+    note[3] = '\0';
   }
   else {
     // Two-digit octave fallback
-    snprintf(note, sizeof(note), "%1s%1u%1u", names[n], oct / 10, oct % 10);
+    note[1] = '0' + oct / 10;
+    note[2] = '0' + oct % 10;
+    note[3] = '\0';
   }
   return note;
 }
@@ -1652,16 +1655,10 @@ void moveOctave(bool up) {
     octave--;
   }
   display_iface::clear();
-  if (octave >= 0) {
-    char label[8];
-    snprintf(label, sizeof(label), "%doct", octave);
-    display_iface::print(label);
-  }
-  else {
-    char label[8];
-    snprintf(label, sizeof(label), "%doc", octave);
-    display_iface::print(label);
-  }
+  char label[8];
+  itoa(octave, label, 10);
+  strcat(label, octave >= 0 ? "oct" : "oc");
+  display_iface::print(label);
   display_iface::setColonOn(false);
   int octaveDelta = octave - previousOctave;
   int octaveStride = getOctaveStrideSemitones();
@@ -2615,10 +2612,11 @@ byte stepRepeatSpeedDivisor(byte currentDivisor, int direction) {
 
 void displayRepeatSpeedDivisor(byte divisor) {
   display_iface::clear();
-  char label[6];
-  snprintf(label, sizeof(label), " 1%u", divisor);
-  display_iface::print(label);
   display_iface::setColonOn(true);
+  char label[6] = " 1";
+  itoa(divisor, label + 2, 10);
+  display_iface::print(label);
+  display_iface::setColonOn(false);
 }
 
 void applyRepeatSpeedDivisor(byte divisor) {
@@ -2702,8 +2700,10 @@ void updateBpmFromEncoder(byte selected) {
   resetAllArpStates(micros());
 
   display_iface::clear();
+  display_iface::setColonOn(false);
   char label[6];
-  snprintf(label, sizeof(label), "%ub", bpm);
+  itoa(bpm, label, 10);
+  strcat(label, "b");
   display_iface::print(label);
 }
 
@@ -2739,8 +2739,9 @@ void updateArpStepNumberFromEncoder(byte selected) {
   resetAllArpStates(micros());
 
   display_iface::clear();
-  char label[6];
-  snprintf(label, sizeof(label), "St%u", (byte) nextStep);
+  display_iface::setColonOn(false);
+  char label[6] = "St";
+  itoa(nextStep, label + 2, 10);
   display_iface::print(label);
 }
 
@@ -2929,7 +2930,11 @@ void selectCCPreset(byte selected) {
     display_iface::clear();
     display_iface::setColonOn(false);
     char label[5];
-    snprintf(label, sizeof(label), "C%03u", presetCC);
+    label[0] = 'C';
+    label[1] = '0' + presetCC / 100;
+    label[2] = '0' + (presetCC / 10) % 10;
+    label[3] = '0' + presetCC % 10;
+    label[4] = '\0';
     display_iface::print(label);
   }
 }
@@ -2942,7 +2947,7 @@ void displayPrint(const char string[], bool semicolon, bool clear) {
 void displayPrint(int string, bool semicolon, bool clear) {
   prepareDisplay(semicolon, clear);
   char label[12];
-  snprintf(label, sizeof(label), "%d", string);
+  itoa(string, label, 10);
   display_iface::print(label);
 }
 
