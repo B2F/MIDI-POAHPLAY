@@ -1010,7 +1010,9 @@ void appSetupImpl() {
   display_iface::init(display);
   display_iface::begin();
   if (bootPlaySwitchOn) {
+    display_iface::setPrintDelay(150);
     display_iface::scrollingText("P0AH PLAY", 1);
+    display_iface::setPrintDelay(TM1637_DEFAULT_PRINT_DELAY);
   }
   else {
     display_iface::print("P0AH PLAY");
